@@ -24,7 +24,7 @@ nextAiringEpisode { episode airingAt }
 relations { edges { relationType node { id type title { romaji english native } } } }
 """
 ANIME_SEARCH = """query ($q: String!) { Page(page: 1, perPage: 12) {
-Media(search: $q, type: ANIME, isAdult: false) {
+media(search: $q, type: ANIME, isAdult: false) {
 id title { romaji english native } startDate { year } coverImage { large }
 } } }"""
 ANIME_DETAIL = "query ($id: Int!) { Media(id: $id, type: ANIME) {" + ANIME_FIELDS + "} }"
@@ -323,7 +323,7 @@ class Catalog:
                     },
                 )
                 if query is not None:
-                    rows = result["data"]["Page"]["Media"]
+                    rows = result["data"]["Page"]["media"]
                     return self.parse_search(rows, anime_record)
                 row = result["data"]["Media"]
                 if not row:

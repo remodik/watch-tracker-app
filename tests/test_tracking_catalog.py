@@ -128,7 +128,11 @@ def test_catalog_search_refresh_cache_retries_and_airing(db_url, caplog):
             if b'"q":"limit"' in request.content:
                 return httpx.Response(429, headers={"Retry-After": "30"})
             if b'"q":' in request.content:
-                return httpx.Response(200, json={"data": {"Page": {"Media": [anime]}}})
+                if b"media(search:" not in request.content:
+                    return httpx.Response(
+                        400, json={"errors": [{"message": "Cannot query field Media on type Page"}]}
+                    )
+                return httpx.Response(200, json={"data": {"Page": {"media": [anime]}}})
             return httpx.Response(200, json={"data": {"Media": anime}})
         assert request.headers["Authorization"] == "Bearer private-read-token"
         if request.url.path.endswith("/configuration"):
