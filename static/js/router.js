@@ -22,6 +22,11 @@ export const libraryRoutes = {
   "/favorites": { favorite: "true" },
 };
 
+export function normalizePath(path) {
+  const normalized = path.replace(/\/+$/, "");
+  return normalized || "/";
+}
+
 export function go(href, { replace = false } = {}) {
   const url = new URL(href, location.href);
   if (url.origin !== location.origin) return;
@@ -49,7 +54,8 @@ export function listenNavigation(callback) {
     if (
       !target ||
       target.target ||
-      target.download ||
+      target.hasAttribute("download") ||
+      target.origin !== location.origin ||
       !target.getAttribute("href").startsWith("/") ||
       target.pathname.startsWith("/api/") ||
       target.pathname.startsWith("/assets/")

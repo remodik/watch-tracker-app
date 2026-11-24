@@ -1,6 +1,12 @@
 import { api, clearSession, currentSession, loadSession } from "./api.js";
 import { $, errorPanel, h, icon, link, toast } from "./components.js";
-import { go, libraryRoutes, listenNavigation, nav } from "./router.js";
+import {
+  go,
+  libraryRoutes,
+  listenNavigation,
+  nav,
+  normalizePath,
+} from "./router.js";
 import { applyPrefs, prefs, setPref } from "./state.js";
 import { openEditor, openNewDetail } from "./pages/editor.js";
 
@@ -122,7 +128,7 @@ async function render() {
   const abort = new AbortController();
   const disposables = [];
   const jobs = [];
-  const path = location.pathname.replace(/\/$/, "") || "/";
+  const path = normalizePath(location.pathname);
   const params = new URLSearchParams(location.search);
   const changedPage = path !== previousPath;
   previousPath = path;
@@ -184,7 +190,7 @@ async function render() {
 
 function find(replace) {
   const q = search.value.trim();
-  const current = location.pathname;
+  const current = normalizePath(location.pathname);
   const nextPath = Object.hasOwn(libraryRoutes, current) ? current : "/library";
   const params =
     current === nextPath

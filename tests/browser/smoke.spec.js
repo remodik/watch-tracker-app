@@ -185,3 +185,19 @@ test("доступность входа, навигации и формы", asyn
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.locator("#add")).toBeFocused();
 });
+
+test("некорректная ссылка на запись и поиск в категории со слешем", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await login(page);
+  for (const path of ["/item", "/item?id=", "/item/%ZZ"]) {
+    await page.goto(path);
+    await expect(
+      page.getByText(/Запись не найдена|Некорректная ссылка/),
+    ).toBeVisible();
+  }
+  await page.goto("/anime/");
+  await page.locator("#global-search input").fill("неизвестное");
+  await expect(page).toHaveURL(/\/anime\?q=/);
+});

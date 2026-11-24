@@ -1,4 +1,4 @@
-import { api } from "../api.js";
+import { api, browserTimeZone } from "../api.js";
 import {
   empty,
   field,
@@ -175,7 +175,7 @@ export async function statisticsPage(context, path, params, signal) {
   const currentYear = new Date().getFullYear();
   const selected = Number(params.get("year")) || currentYear;
   const year = selected >= 1870 && selected <= 2200 ? selected : currentYear;
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timezone = browserTimeZone();
   const stats = await api(
     "/api/statistics?" + new URLSearchParams({ year, tz: timezone }),
     { signal },

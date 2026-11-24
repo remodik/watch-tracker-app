@@ -1,4 +1,4 @@
-import { api } from "../api.js";
+import { api, browserTimeZone } from "../api.js";
 import {
   button,
   empty,
@@ -45,7 +45,7 @@ export async function calendarPage(context, path, params, signal) {
   });
   list.setAttribute("aria-pressed", String(!monthMode));
   calendar.setAttribute("aria-pressed", String(monthMode));
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timezone = browserTimeZone();
   const refresh =
     providers.anilist &&
     button(

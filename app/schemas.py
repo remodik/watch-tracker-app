@@ -166,6 +166,7 @@ class ItemInput(Input):
     rating: Rating | None = None
     episodesDone: EpisodeCount = 0
     episodesTotal: EpisodeCount = 0
+    episodesTotalFromSeasons: bool = False
     seasons: Annotated[list[Season], Field(max_length=999)] = Field(default_factory=list)
     started: Annotated[str, StringConstraints(max_length=10)] | None = None
     completed: Annotated[str, StringConstraints(max_length=10)] | None = None

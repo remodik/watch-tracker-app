@@ -24,6 +24,7 @@ def tracking(item):
     return {
         "episodesDone": 0,
         "episodesTotal": 0,
+        "episodesTotalFromSeasons": False,
         "seasons": [],
         "started": None,
         "completed": None,
@@ -123,6 +124,7 @@ def assign(item, data, timestamp):
         include={
             "episodesDone",
             "episodesTotal",
+            "episodesTotalFromSeasons",
             "seasons",
             "started",
             "completed",

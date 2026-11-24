@@ -102,21 +102,23 @@
       ></nav>
     </div>
     <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
-    <div
-      id="toasts"
-      class="toasts"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-    ></div>
-    <div id="update-banner" class="update-banner" hidden>
-      <span>Доступно обновление Watch Tracker</span>
-      <button id="apply-update" class="button primary" type="button">
-        Обновить
-      </button>
-      <button id="dismiss-update" class="button subtle" type="button">
-        Позже
-      </button>
-    </div>
+    <aside class="notification-stack" aria-label="Уведомления">
+      <div
+        id="toasts"
+        class="toasts"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      ></div>
+      <div id="update-banner" class="update-banner" hidden>
+        <span>Доступно обновление Watch Tracker</span>
+        <button id="apply-update" class="button primary" type="button">
+          Обновить
+        </button>
+        <button id="dismiss-update" class="button subtle" type="button">
+          Позже
+        </button>
+      </div>
+    </aside>
   </body>
 </html>

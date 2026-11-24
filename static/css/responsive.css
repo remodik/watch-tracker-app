@@ -113,8 +113,7 @@
     gap: 11px;
     padding: 13px;
   }
-  .toasts,
-  .update-banner {
+  .notification-stack {
     bottom: calc(65px + env(safe-area-inset-bottom));
     right: 12px;
   }

@@ -64,7 +64,7 @@ def refresh(sessions, item_id, provider, catalog_id, catalog_item):
             "nextAiring": new_metadata.get("nextAiring"),
         }
         state = tracking(item)
-        if catalog_item.episodesTotal:
+        if catalog_item.episodesTotal and not state["episodesTotalFromSeasons"]:
             state["episodesTotal"] = max(
                 catalog_item.episodesTotal,
                 state["episodesDone"],

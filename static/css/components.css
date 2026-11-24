@@ -674,13 +674,18 @@ dialog::backdrop {
   height: auto;
   margin-bottom: 5px;
 }
-.toasts,
-.update-banner {
+.notification-stack {
   position: fixed;
   bottom: 20px;
   right: 20px;
   z-index: 6;
   max-width: min(440px, calc(100% - 36px));
+  display: grid;
+  gap: 8px;
+}
+.toasts,
+.update-banner {
+  overflow-wrap: anywhere;
   padding: 12px 16px;
   background: var(--surface-elevated);
   border: 1px solid var(--control-border);
@@ -726,4 +731,14 @@ details > form,
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 175px), 1fr));
   gap: 9px;
+}
+
+.poster-card:has(.context[open]),
+.list-card:has(.context[open]) {
+  position: relative;
+  z-index: 2;
+}
+
+.button.outline:hover {
+  border-color: var(--control-border);
 }

@@ -48,7 +48,9 @@ export function releaseList(releases) {
                 "Эпизод " +
                   release.episode +
                   " · " +
-                  sources[release.source] +
+                  (Object.hasOwn(sources, release.source)
+                    ? sources[release.source]
+                    : "Неизвестный источник") +
                   " · Запланирован",
               ),
             ),

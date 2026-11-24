@@ -1,3 +1,16 @@
+export function browserTimeZone() {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (zone && /^[A-Za-z0-9_+\/-]{1,100}$/.test(zone)) {
+      new Intl.DateTimeFormat("en", { timeZone: zone });
+      return zone;
+    }
+  } catch {
+    // Older browsers may not expose a usable IANA identifier.
+  }
+  return "UTC";
+}
+
 let session;
 
 export class ApiError extends Error {
@@ -25,6 +38,7 @@ export async function api(
   { method = "GET", data, signal, login = false, file = false } = {},
 ) {
   const headers = new Headers({ Accept: "application/json" });
+  if (method !== "GET") headers.set("X-Watch-Timezone", browserTimeZone());
   if (data !== undefined) headers.set("Content-Type", "application/json");
   if (login) headers.set("X-Watch-Login", "1");
   if (session?.csrf && method !== "GET")

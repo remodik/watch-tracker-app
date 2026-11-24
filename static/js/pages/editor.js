@@ -187,6 +187,11 @@ function manualForm(item, prefill, saved) {
       seasonsTotal: integer("seasonsTotal") ?? 0,
       episodesDone: integer("episodesDone") ?? 0,
       episodesTotal: integer("episodesTotal") ?? 0,
+      episodesTotalFromSeasons: Boolean(
+        type.value === "anime" &&
+        data.episodesTotalFromSeasons &&
+        (integer("episodesTotal") ?? 0) === data.episodesTotal,
+      ),
       seasons: type.value === "anime" ? (data.seasons ?? []) : [],
       metadata: {
         ...metadata,
@@ -245,6 +250,16 @@ export async function openEditor(item, saved) {
   body.append(modes, panel);
   const dialog = showDialog("Добавить произведение", body);
   let request;
+  const nextRequest = () => {
+    request?.abort();
+    request = new AbortController();
+    return request;
+  };
+  const current = (operation) =>
+    !operation.signal.aborted &&
+    body.isConnected &&
+    dialog.open &&
+    state === "catalog";
   let state = "manual";
   let prefill;
   const manual = button("Вручную", () => switchTo("manual"), {
@@ -270,9 +285,12 @@ export async function openEditor(item, saved) {
   async function showCatalog() {
     const loading = h("p", "muted", "Загрузка настроек каталогов…");
     panel.replaceChildren(loading);
+    const operation = nextRequest();
     try {
-      const available = await api("/api/catalog/status");
-      if (state !== "catalog" || !dialog.open) return;
+      const available = await api("/api/catalog/status", {
+        signal: operation.signal,
+      });
+      if (!current(operation)) return;
       const options = Object.keys(sources)
         .filter((name) => available[name])
         .map((name) => [name, sources[name]]);
@@ -314,6 +332,7 @@ export async function openEditor(item, saved) {
         request?.abort();
         if (
           !dialog.open ||
+          !form.isConnected ||
           state !== "catalog" ||
           query.value.trim().length < 2
         ) {
@@ -321,17 +340,19 @@ export async function openEditor(item, saved) {
           status.textContent = "";
           return;
         }
-        request = new AbortController();
+        const operation = nextRequest();
+        const source = provider.value;
         status.textContent = "Поиск…";
         results.replaceChildren();
         try {
           const entries = await api(
             "/api/catalog/" +
-              provider.value +
+              source +
               "/search?" +
               new URLSearchParams({ q: query.value.trim() }),
-            { signal: request.signal },
+            { signal: operation.signal },
           );
+          if (!current(operation)) return;
           status.textContent = entries.length
             ? "Найдено · " + entries.length
             : "Совпадений нет";
@@ -348,26 +369,28 @@ export async function openEditor(item, saved) {
                   h(
                     "span",
                     "small muted",
-                    [entry.year, sources[provider.value]]
-                      .filter(Boolean)
-                      .join(" · "),
+                    [entry.year, sources[source]].filter(Boolean).join(" · "),
                   ),
                 ),
                 icon("chevron-right"),
               );
               choice.type = "button";
               choice.addEventListener("click", async () => {
+                if (!form.isConnected || provider.value !== source) return;
+                const detailRequest = nextRequest();
                 choice.disabled = true;
                 try {
-                  prefill = await api(
-                    "/api/catalog/" +
-                      provider.value +
-                      "/" +
-                      entry.metadata.externalId,
+                  const entryData = await api(
+                    "/api/catalog/" + source + "/" + entry.metadata.externalId,
+                    { signal: detailRequest.signal },
                   );
-                  if (dialog.open && state === "catalog") switchTo("manual");
+                  if (!current(detailRequest) || provider.value !== source)
+                    return;
+                  prefill = entryData;
+                  switchTo("manual");
                 } catch (failure) {
-                  status.textContent = failure.message;
+                  if (current(detailRequest))
+                    status.textContent = failure.message;
                 } finally {
                   choice.disabled = false;
                 }
@@ -376,7 +399,7 @@ export async function openEditor(item, saved) {
             }),
           );
         } catch (failure) {
-          if (failure.name !== "AbortError")
+          if (current(operation) && failure.name !== "AbortError")
             status.textContent = failure.message;
         }
       };
@@ -392,6 +415,7 @@ export async function openEditor(item, saved) {
       });
       provider.addEventListener("change", search);
     } catch (error) {
+      if (!current(operation)) return;
       panel.replaceChildren(
         empty(
           "Каталог недоступен",
@@ -429,10 +453,14 @@ export function importDialog(initial, refreshed) {
   error.setAttribute("role", "alert");
   let archive = initial;
   let generation = 0;
+  let pendingPreview;
   const preview = button(
     "Предпросмотр",
     async () => {
       const request = ++generation;
+      pendingPreview?.abort();
+      const controller = new AbortController();
+      pendingPreview = controller;
       preview.disabled = true;
       error.textContent = "";
       output.replaceChildren();
@@ -442,7 +470,31 @@ export function importDialog(initial, refreshed) {
           if (!chosen) throw new Error("Выберите JSON-файл.");
           if (chosen.size > maxArchiveBytes)
             throw new Error("Файл превышает 16 МиБ.");
-          archive = JSON.parse((await chosen.text()).replace(/^\uFEFF/, ""));
+          const parsed = JSON.parse(
+            (await chosen.text()).replace(/^\uFEFF/, ""),
+          );
+          if (generation !== request || !dialog.open) return;
+          archive = parsed;
+        }
+        if (!Array.isArray(archive)) {
+          if (
+            !archive ||
+            typeof archive !== "object" ||
+            !Array.isArray(archive.items)
+          )
+            throw new Error(
+              "Ожидается список записей или архив с полем items.",
+            );
+          if (
+            Object.hasOwn(archive, "version") &&
+            ![1, 2].includes(archive.version)
+          )
+            throw new Error("Эта версия архива не поддерживается.");
+          if (
+            Object.hasOwn(archive, "events") &&
+            !Array.isArray(archive.events)
+          )
+            throw new Error("Поле events должно быть списком событий.");
         }
         const payload = Array.isArray(archive)
           ? { mode: mode.value, items: archive }
@@ -455,8 +507,9 @@ export function importDialog(initial, refreshed) {
         const result = await api("/api/items/bulk-import/preview", {
           method: "POST",
           data: payload,
+          signal: controller.signal,
         });
-        if (generation !== request) return;
+        if (generation !== request || !dialog.open) return;
         output.append(
           h(
             "p",
@@ -537,7 +590,7 @@ export function importDialog(initial, refreshed) {
               ? "Некорректный JSON."
               : errorText(failure);
       } finally {
-        preview.disabled = false;
+        if (generation === request) preview.disabled = false;
       }
     },
     { glyph: "scan-search" },
@@ -545,10 +598,16 @@ export function importDialog(initial, refreshed) {
   file.addEventListener("change", () => {
     archive = undefined;
     generation++;
+    pendingPreview?.abort();
+    preview.disabled = false;
+    error.textContent = "";
     output.replaceChildren();
   });
   mode.addEventListener("change", () => {
     generation++;
+    pendingPreview?.abort();
+    preview.disabled = false;
+    error.textContent = "";
     output.replaceChildren();
   });
   const dialog = showDialog(
@@ -562,6 +621,14 @@ export function importDialog(initial, refreshed) {
       output,
       error,
     ),
+  );
+  dialog.addEventListener(
+    "close",
+    () => {
+      generation++;
+      pendingPreview?.abort();
+    },
+    { once: true },
   );
 }
 

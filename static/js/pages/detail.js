@@ -119,6 +119,10 @@ function updateSeason(item, context) {
     } = item;
     save.disabled = true;
     try {
+      const deriveTotal = item.episodesTotalFromSeasons || !item.episodesTotal;
+      const completeTotals =
+        seasons.every((entry) => entry.episodesTotal > 0) &&
+        (!item.seasonsTotal || seasons.length === item.seasonsTotal);
       const knownTotal = seasons.reduce(
         (sum, entry) => sum + entry.episodesTotal,
         0,
@@ -128,7 +132,12 @@ function updateSeason(item, context) {
         data: {
           ...data,
           seasons,
-          episodesTotal: Math.max(knownTotal, item.episodesTotal),
+          episodesTotalFromSeasons: deriveTotal,
+          episodesTotal: deriveTotal
+            ? completeTotals
+              ? Math.max(knownTotal, item.episodesDone)
+              : 0
+            : item.episodesTotal,
         },
       });
       dialog.close();
@@ -272,10 +281,17 @@ function eventLabel(event) {
 }
 
 export async function detailPage(context, path, _params, signal) {
-  const id =
-    path === "/item"
-      ? _params.get("id")
-      : decodeURIComponent(path.slice("/item/".length));
+  let id;
+  try {
+    id =
+      path === "/item"
+        ? _params.get("id")
+        : decodeURIComponent(path.slice("/item/".length));
+  } catch {
+    throw new Error("Некорректная ссылка на произведение.");
+  }
+  if (!id || id.length > 500 || id.includes("\0"))
+    throw new Error("Запись не найдена.");
   const { item, events } = await api(itemApi("detail", id), { signal });
   const metadata = item.metadata ?? {};
   const provider = sources[metadata.provider];
