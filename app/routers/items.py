@@ -15,7 +15,7 @@ from app.schemas import (
     Progress,
     StatusChange,
 )
-from app.services.import_export import create_backup
+from app.services.import_export import create_backup, prune_automatic_backups
 from app.services.library import (
     add_item,
     archive_event,
@@ -94,6 +94,7 @@ def update(
         raise HTTPException(409, {"message": "Произведение уже в коллекции", "id": match.id})
     if item.type != payload.type and confirm_type_change:
         create_backup(db, "type-change")
+        prune_automatic_backups(db)
     update_item(db, item, payload, confirm_type_change)
     db.commit()
     return item_response(item)
@@ -105,6 +106,7 @@ def remove(id: Identifier, db: DB):
     item = get_item(db, id)
     backup = create_backup(db, "delete")
     db.delete(item)
+    prune_automatic_backups(db)
     db.commit()
     return {"ok": True, "backupId": backup.id}
 

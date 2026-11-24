@@ -254,3 +254,29 @@ def test_api_disallows_forged_rewatch(authorized, status):
         ).status_code
         == 409
     )
+
+
+def test_server_restore_rejects_stale_preview_and_preserves_event_ids(authorized):
+    item = create(authorized, "Server snapshot", episodesTotal=5)
+    params = {"id": item["id"]}
+    authorized.post("/api/items/progress", params=params, json={"delta": 1})
+    archive = authorized.get("/api/export").json()
+    snapshot = authorized.post("/api/backups").json()
+    path = "/api/backups/" + snapshot["id"]
+    preview = authorized.get(path + "/restore-preview").json()
+    authorized.post("/api/items/favorite", params=params, json={"favorite": True})
+    assert (
+        authorized.post(
+            path + "/restore", json={"preview": preview["preview"], "confirm": True}
+        ).status_code
+        == 409
+    )
+    preview = authorized.get(path + "/restore-preview").json()
+    assert authorized.post(
+        path + "/restore", json={"preview": preview["preview"], "confirm": True}
+    ).is_success
+    restored = authorized.get("/api/export").json()
+    assert restored["items"] == archive["items"]
+    assert restored["events"] == archive["events"]
+    assert authorized.get("/api/backups").json()["total_bytes"] > 0
+    assert authorized.delete(path).is_success

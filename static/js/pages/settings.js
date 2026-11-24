@@ -19,6 +19,8 @@ const reasons = {
   replace: "Перед заменой",
   update: "Перед обновлением",
   delete: "Перед удалением",
+  restore: "Перед восстановлением",
+  "type-change": "Перед сменой типа",
 };
 
 export async function settingsPage(context, _path, _params, signal) {
@@ -105,7 +107,13 @@ export async function settingsPage(context, _path, _params, signal) {
         .catch((failure) => toast(failure.message)),
     { glyph: "download" },
   );
-  const backupList = h("div", "stack");
+  const sizeLabel = (bytes) =>
+    new Intl.NumberFormat("ru").format(bytes) + " байт";
+  const backupList = h(
+    "div",
+    "stack",
+    h("p", "muted small", "Общий размер: " + sizeLabel(backups.total_bytes)),
+  );
   let page = 1;
   function appendBackups(result) {
     if (!result.items.length && page === 1) {
@@ -129,7 +137,13 @@ export async function settingsPage(context, _path, _params, signal) {
                 "div",
                 "stack",
                 h("strong", "", formatDate(entry.created, true)),
-                h("span", "muted small", reasons[entry.reason] ?? entry.reason),
+                h(
+                  "span",
+                  "muted small",
+                  (reasons[entry.reason] ?? entry.reason) +
+                    " · " +
+                    sizeLabel(entry.size_bytes),
+                ),
               ),
               h(
                 "div",
@@ -144,11 +158,51 @@ export async function settingsPage(context, _path, _params, signal) {
                 ),
                 button(
                   "Восстановить",
-                  () =>
-                    api(path)
-                      .then((archive) => importDialog(archive, context.refresh))
-                      .catch((failure) => toast(failure.message)),
+                  async () => {
+                    try {
+                      const preview = await api(path + "/restore-preview");
+                      if (preview.invalid) {
+                        toast(
+                          "Копия содержит некорректные записи: " +
+                            preview.invalid,
+                        );
+                        return;
+                      }
+                      confirmDialog(
+                        "Восстановить копию?",
+                        "Текущая коллекция будет заменена. Записей: " +
+                          preview.added +
+                          ", событий: " +
+                          preview.events +
+                          ".",
+                        "Восстановить",
+                        async () => {
+                          await api(path + "/restore", {
+                            method: "POST",
+                            data: { preview: preview.preview, confirm: true },
+                          });
+                          context.refresh();
+                        },
+                      );
+                    } catch (failure) {
+                      toast(failure.message);
+                    }
+                  },
                   { glyph: "history" },
+                ),
+                button(
+                  "Удалить",
+                  () =>
+                    confirmDialog(
+                      "Удалить резервную копию?",
+                      "Эта копия будет удалена без возможности восстановления.",
+                      "Удалить",
+                      async () => {
+                        await api(path, { method: "DELETE" });
+                        context.refresh();
+                      },
+                    ),
+                  { glyph: "trash-2" },
                 ),
               ),
             ),

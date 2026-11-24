@@ -25,6 +25,8 @@ class Settings:
     origin: str = ""
     anilist: bool = False
     tmdb_token: str = ""
+    backup_retention_days: int = 30
+    backup_max_automatic_count: int = 20
 
     @classmethod
     def from_env(cls):
@@ -37,6 +39,8 @@ class Settings:
             origin=os.getenv("APP_ORIGIN", "").rstrip("/"),
             anilist=os.getenv("ANILIST_ENABLED") == "1",
             tmdb_token=os.getenv("TMDB_READ_TOKEN", ""),
+            backup_retention_days=int(os.getenv("BACKUP_RETENTION_DAYS", "30")),
+            backup_max_automatic_count=int(os.getenv("BACKUP_MAX_AUTOMATIC_COUNT", "20")),
         )
 
     @property
@@ -48,6 +52,8 @@ class Settings:
         return "__Host-watch_session" if self.production else "watch_session"
 
     def validate(self):
+        if self.backup_retention_days < 1 or self.backup_max_automatic_count < 1:
+            raise RuntimeError("Backup retention and count must be positive")
         if self.environment not in {"local", "production"}:
             raise RuntimeError("APP_ENV must be local or production")
         if os.getenv("RAILWAY_ENVIRONMENT_ID") and not self.production:

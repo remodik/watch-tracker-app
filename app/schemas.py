@@ -234,12 +234,22 @@ class ArchiveEvent(Input):
     data: EventData
 
 
-class ImportRequest(Input):
+class ArchiveRequest(Input):
     mode: ImportMode
     version: Annotated[int, Field(ge=1, le=2)] = 1
+    items: list[object]
+    events: list[object] = Field(default_factory=list)
+    confirm: bool = False
+
+
+class ImportRequest(ArchiveRequest):
     items: Annotated[list[object], Field(max_length=10000)]
     events: Annotated[list[object], Field(max_length=50000)] = Field(default_factory=list)
-    confirm: bool = False
+
+
+class BackupRestore(Input):
+    preview: Identifier
+    confirm: Literal[True]
 
 
 class Progress(Input):

@@ -47,7 +47,7 @@ def create_app(settings=None):
                             raise RuntimeError("Required database lock row is missing")
             except exc.SQLAlchemyError:
                 raise RuntimeError("Database unavailable during startup checks") from None
-            application.state.sessions = make_sessions(engine)
+            application.state.sessions = make_sessions(engine, settings)
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(6.0, connect=3.0),
                 limits=httpx.Limits(max_connections=6),

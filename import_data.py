@@ -11,13 +11,16 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import database_url
 from app.database import lock_library, make_engine, make_sessions
-from app.schemas import ImportRequest
+from app.schemas import ArchiveRequest, ImportRequest
 from app.services.import_export import apply_import, plan_import
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("file", type=Path)
+    parser.add_argument(
+        "--large-archive", action="store_true", help="Allow larger trusted local archives"
+    )
     parser.add_argument("--preview", action="store_true")
     parser.add_argument("--mode", choices=("merge", "update", "replace"), default="merge")
     parser.add_argument("--confirm-replace", action="store_true")
@@ -25,11 +28,12 @@ def main():
     load_dotenv()
     engine = make_engine(database_url())
     try:
-        if args.file.stat().st_size > 16 * 1024 * 1024:
+        if not args.large_archive and args.file.stat().st_size > 16 * 1024 * 1024:
             parser.exit(1, "Архив превышает 16 МиБ.\n")
         raw = json.loads(args.file.read_text(encoding="utf-8-sig"))
         archive = {"items": raw} if isinstance(raw, list) else raw
-        payload = ImportRequest.model_validate(
+        schema = ArchiveRequest if args.large_archive else ImportRequest
+        payload = schema.model_validate(
             {
                 **{k: v for k, v in archive.items() if k in {"version", "items", "events"}},
                 "mode": args.mode,

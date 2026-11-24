@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass, field
 
 from fastapi import HTTPException
@@ -33,9 +34,31 @@ def export_library(db):
 
 
 def create_backup(db, reason):
-    backup = Backup(id=uuid(), created=now_ms(), reason=reason, archive=export_library(db))
+    archive = export_library(db)
+    size = len(json.dumps(archive, ensure_ascii=False, separators=(",", ":")).encode())
+    backup = Backup(id=uuid(), created=now_ms(), reason=reason, archive=archive, size_bytes=size)
     db.add(backup)
     return backup
+
+
+def prune_automatic_backups(db):
+    settings = db.info.get("settings")
+    days = settings.backup_retention_days if settings else 30
+    limit = settings.backup_max_automatic_count if settings else 20
+    cutoff = now_ms() - days * 86_400_000
+    db.flush()
+    ordered = (
+        select(Backup.id, Backup.created)
+        .where(Backup.reason != "manual")
+        .order_by(Backup.created.desc(), Backup.id.desc())
+    )
+    obsolete = [
+        backup_id
+        for index, (backup_id, created) in enumerate(db.execute(ordered))
+        if index and (index >= limit or created < cutoff)
+    ]
+    for start in range(0, len(obsolete), 500):
+        db.execute(delete(Backup).where(Backup.id.in_(obsolete[start : start + 500])))
 
 
 def validation_messages(exc):
@@ -223,13 +246,13 @@ def plan_import(db, payload):
     return plan
 
 
-def apply_import(db, payload, plan):
+def apply_import(db, payload, plan, backup_reason=None):
     if plan.errors:
         raise HTTPException(422, detail=plan.summary())
     replace = payload.mode == "replace"
     if replace and not payload.confirm:
         raise HTTPException(409, "Подтвердите замену всей коллекции")
-    backup = create_backup(db, payload.mode) if replace or plan.updated else None
+    backup = create_backup(db, backup_reason or payload.mode) if replace or plan.updated else None
     if replace:
         db.execute(delete(WatchEvent))
         db.execute(delete(Item))
@@ -250,5 +273,7 @@ def apply_import(db, payload, plan):
                 item.identity_key = None
     db.flush()
     db.add_all(plan.events)
+    if backup:
+        prune_automatic_backups(db)
     db.commit()
     return {**plan.summary(), "backupId": backup.id if backup else None}

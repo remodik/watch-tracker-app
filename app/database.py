@@ -19,8 +19,8 @@ def make_engine(url):
     return engine
 
 
-def make_sessions(engine):
-    return sessionmaker(engine, expire_on_commit=False)
+def make_sessions(engine, settings=None):
+    return sessionmaker(engine, expire_on_commit=False, info={"settings": settings})
 
 
 def lock_library(db):
