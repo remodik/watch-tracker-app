@@ -1,10 +1,11 @@
 from fastapi import HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.concurrency import run_in_threadpool
-from starlette.datastructures import MutableHeaders
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.responses import JSONResponse
 
 from app.dependencies import require_user
+from app.viewing_time import viewing_zone, zone_for
 
 CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https:; "
@@ -22,6 +23,13 @@ class SecurityMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        token = viewing_zone.set(zone_for(Headers(scope=scope).get("x-watch-timezone")))
+        try:
+            await self.http(scope, receive, send)
+        finally:
+            viewing_zone.reset(token)
+
+    async def http(self, scope, receive, send):
         path = scope["path"]
 
         async def with_headers(message):

@@ -1,7 +1,8 @@
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
+from heapq import nsmallest
 
-from sqlalchemy import BigInteger, cast, select
+from sqlalchemy import select
 
 from app.identity import decode_genres, normalize
 from app.models import Item, WatchEvent
@@ -106,7 +107,11 @@ def report(db, year, zone):
             continue
         data = event.data
         month = date.strftime("%Y-%m")
-        completed = int(event.kind == "status" and data.get("status") == "watched")
+        completed = int(
+            event.kind == "status"
+            and data.get("status") == "watched"
+            and data.get("completion") is not False
+        )
         episodes = data.get("episodes", 0)
         if completed:
             months["completed"][month] += completed
@@ -129,26 +134,33 @@ def report(db, year, zone):
 
 
 def upcoming(db, limit=100):
-    scheduled = cast(Item.metadata_json["nextAiring"].as_string(), BigInteger)
-    rows = db.scalars(
-        select(Item)
+    now = int(datetime.now(UTC).timestamp() * 1000)
+    rows = db.execute(
+        select(Item.id, Item.title, Item.metadata_json)
         .where(
             Item.type == "anime",
             Item.status.in_(["plan", "watching", "rewatching", "paused"]),
             Item.metadata_json["provider"].as_string() == "anilist",
-            scheduled >= int(datetime.now(UTC).timestamp() * 1000),
         )
-        .order_by(scheduled, Item.id)
-        .limit(limit)
+        .execution_options(yield_per=200)
     )
-    return [
-        {
-            "id": item.id,
-            "title": item.title,
-            "episode": item.metadata_json["nextEpisode"],
-            "at": item.metadata_json["nextAiring"],
-            "source": "anilist",
-            "status": "scheduled",
-        }
-        for item in rows
-    ]
+
+    def validated():
+        for item_id, title, metadata in rows:
+            episode, airing = metadata.get("nextEpisode"), metadata.get("nextAiring")
+            if (
+                type(episode) is int
+                and 1 <= episode <= 100_000
+                and type(airing) is int
+                and now <= airing <= 253402300799999
+            ):
+                yield {
+                    "id": item_id,
+                    "title": title,
+                    "episode": episode,
+                    "at": airing,
+                    "source": "anilist",
+                    "status": "scheduled",
+                }
+
+    return nsmallest(limit, validated(), key=lambda item: (item["at"], item["id"]))

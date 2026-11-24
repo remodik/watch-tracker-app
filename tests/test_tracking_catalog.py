@@ -228,3 +228,37 @@ def test_catalog_search_refresh_cache_retries_and_airing(db_url):
             assert client.get("/api/items").is_success
         finally:
             client.portal.call(mock.aclose)
+
+
+def test_catalog_optional_fields_and_titles():
+    from app.services.catalog import anime_record, film_record
+
+    anime = anime_record(
+        {
+            "id": 42,
+            "title": {"english": "  ", "romaji": "Title"},
+            "startDate": None,
+            "relations": {"edges": [None, {"node": None}]},
+            "nextAiringEpisode": {"airingAt": 1},
+            "episodes": "unknown",
+        }
+    )
+    assert anime.title == "Title" and anime.year is None
+    assert anime.metadata.related == [] and anime.metadata.nextAiring is None
+    film = film_record(
+        {
+            "id": 7,
+            "title": "Film",
+            "alternative_titles": {
+                "titles": [
+                    {"title": "  "},
+                    {"title": " Alt "},
+                    None,
+                    {"title": "alt"},
+                    {"title": 7},
+                ]
+            },
+        },
+        {},
+    )
+    assert film.metadata.alternateTitles == ["Alt"]

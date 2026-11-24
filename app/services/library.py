@@ -1,7 +1,6 @@
 import json
 import time
 from copy import deepcopy
-from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -10,6 +9,7 @@ from sqlalchemy import Float, case, cast, func, literal, select
 from app.identity import decode_genres, fingerprint, genre_key, match_key, normalize, search_key
 from app.models import Item, WatchEvent
 from app.schemas import EventData, Season
+from app.viewing_time import today
 
 
 def now_ms():
@@ -154,10 +154,6 @@ def add_item(db, data, imported=False):
     return item
 
 
-def today():
-    return datetime.now(UTC).date().isoformat()
-
-
 def record(db, item, kind, **data):
     db.add(
         WatchEvent(
@@ -212,6 +208,7 @@ def set_status(db, item, status):
         "status",
         status=status,
         rewatch=rewatch,
+        completion=False if status == "watched" and not completion else None,
         film=item.type == "film" and completion,
     )
 

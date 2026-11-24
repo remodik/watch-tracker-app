@@ -2,13 +2,15 @@ import asyncio
 import re
 import time
 from collections import OrderedDict
+from datetime import date
 from html.parser import HTMLParser
 
 import httpx
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.schemas import ItemInput
+from app.identity import normalize
+from app.schemas import ItemInput, Related
 
 ANILIST = "https://graphql.anilist.co"
 TMDB = "https://api.themoviedb.org/3"
@@ -45,32 +47,74 @@ def plain(value):
     return "".join(parser.parts).strip()[:30000]
 
 
+def optional_object(value):
+    return value if isinstance(value, dict) else {}
+
+
+def optional_list(value):
+    return value if isinstance(value, list) else []
+
+
+def title_string(value):
+    if isinstance(value, str):
+        value = value.strip()
+        if 0 < len(value) <= 500 and "\0" not in value:
+            return value
+    return None
+
+
+def alternatives(values):
+    titles = {}
+    for raw in values:
+        title = title_string(raw)
+        if title:
+            titles.setdefault(normalize(title), title)
+            if len(titles) == 50:
+                break
+    return list(titles.values())
+
+
 def anime_title(titles):
-    return titles.get("english") or titles.get("romaji") or titles.get("native")
+    return next(
+        (
+            title
+            for key in ("english", "romaji", "native")
+            if (title := title_string(titles.get(key)))
+        ),
+        None,
+    )
+
+
+def bounded_int(value, low, high):
+    return value if type(value) is int and low <= value <= high else None
 
 
 def anime_record(raw):
-    titles = raw["title"]
-    release = raw.get("startDate", {})
-    year = release.get("year")
-    release_date = (
-        f"{year:04}-{release['month']:02}-{release['day']:02}"
-        if all(release.get(key) for key in ("year", "month", "day"))
-        else None
-    )
-    next_episode = raw.get("nextAiringEpisode") or {}
+    titles = optional_object(raw.get("title"))
+    release = optional_object(raw.get("startDate"))
+    year = bounded_int(release.get("year"), 1870, 2200)
+    try:
+        release_date = date(year, release.get("month"), release.get("day")).isoformat()
+    except (TypeError, ValueError):
+        release_date = None
+    next_episode = optional_object(raw.get("nextAiringEpisode"))
+    episode = bounded_int(next_episode.get("episode"), 1, 100_000)
+    airing = bounded_int(next_episode.get("airingAt"), 1, 253402300799)
     relations = []
-    for edge in (raw.get("relations") or {}).get("edges", [])[:50]:
-        other = edge["node"]
-        if other["type"] == "ANIME" and anime_title(other["title"]):
-            relations.append(
-                {
-                    "id": other["id"],
-                    "title": anime_title(other["title"]),
-                    "relation": edge.get("relationType") or "",
-                }
-            )
-    score = raw.get("averageScore")
+    for edge in optional_list(optional_object(raw.get("relations")).get("edges"))[:50]:
+        edge = optional_object(edge)
+        other = optional_object(edge.get("node"))
+        if other.get("type") == "ANIME":
+            try:
+                relation = Related(
+                    id=other.get("id"),
+                    title=anime_title(optional_object(other.get("title"))),
+                    relation=edge.get("relationType") or "",
+                )
+            except ValueError:
+                continue
+            relations.append(relation.model_dump())
+    score = bounded_int(raw.get("averageScore"), 0, 100)
     return ItemInput.model_validate(
         {
             "type": "anime",
@@ -78,27 +122,23 @@ def anime_record(raw):
             "year": year,
             "status": "plan",
             "genres": (raw.get("genres") or [])[:40],
-            "episodesTotal": raw.get("episodes") or 0,
+            "episodesTotal": bounded_int(raw.get("episodes"), 1, 100_000) or 0,
             "metadata": {
                 "provider": "anilist",
                 "fetchedAt": time.time_ns() // 1_000_000,
                 "externalId": raw["id"],
-                "originalTitle": titles.get("native"),
-                "romajiTitle": titles.get("romaji"),
-                "alternateTitles": [
-                    s for s in raw.get("synonyms") or [] if s.strip() and len(s) <= 500
-                ][:50],
-                "poster": (raw.get("coverImage") or {}).get("large"),
+                "originalTitle": title_string(titles.get("native")),
+                "romajiTitle": title_string(titles.get("romaji")),
+                "alternateTitles": alternatives(optional_list(raw.get("synonyms"))),
+                "poster": optional_object(raw.get("coverImage")).get("large"),
                 "backdrop": raw.get("bannerImage"),
                 "description": plain(raw.get("description")),
                 "releaseDate": release_date,
                 "releaseStatus": raw.get("status"),
-                "runtime": raw.get("duration") or None,
+                "runtime": bounded_int(raw.get("duration"), 1, 3000),
                 "communityRating": score / 10 if score is not None else None,
-                "nextEpisode": next_episode.get("episode"),
-                "nextAiring": next_episode["airingAt"] * 1000
-                if next_episode.get("airingAt")
-                else None,
+                "nextEpisode": episode if airing else None,
+                "nextAiring": airing * 1000 if airing and episode else None,
                 "related": relations,
             },
         }
@@ -122,7 +162,7 @@ def tmdb_image(path, size, config):
 
 def film_record(raw, config):
     release = raw.get("release_date") or None
-    alternatives = (raw.get("alternative_titles") or {}).get("titles", [])
+    alternate_entries = optional_list(optional_object(raw.get("alternative_titles")).get("titles"))
     votes = raw.get("vote_count") or 0
     return ItemInput.model_validate(
         {
@@ -136,13 +176,9 @@ def film_record(raw, config):
                 "fetchedAt": time.time_ns() // 1_000_000,
                 "externalId": raw["id"],
                 "originalTitle": raw.get("original_title"),
-                "alternateTitles": list(
-                    dict.fromkeys(
-                        t["title"]
-                        for t in alternatives
-                        if t.get("title") and len(t["title"]) <= 500
-                    )
-                )[:50],
+                "alternateTitles": alternatives(
+                    optional_object(entry).get("title") for entry in alternate_entries
+                ),
                 "poster": tmdb_image(raw.get("poster_path"), "w342", config),
                 "backdrop": tmdb_image(raw.get("backdrop_path"), "w780", config),
                 "description": plain(raw.get("overview")),

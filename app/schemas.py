@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -11,6 +11,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from app.viewing_time import today
 
 Kind = Literal["anime", "film"]
 Status = Literal["plan", "watching", "watched", "paused", "dropped", "rewatching"]
@@ -101,7 +103,7 @@ def iso_date(value):
 
 def viewing_date(value):
     value = iso_date(value)
-    if value and value > datetime.now(UTC).date().isoformat():
+    if value and value > today():
         raise ValueError("Дата просмотра не может быть в будущем")
     return value
 
@@ -211,6 +213,7 @@ class ItemInput(Input):
 
 
 class ArchiveItem(ItemInput):
+    _check_dates = field_validator("started", "completed")(iso_date)
     id: Identifier | None = None
     legacyDuplicate: bool = False
     added: Timestamp | None = None
@@ -222,6 +225,7 @@ class EventData(Input):
     seasons: Annotated[int, Field(ge=-999, le=999)] = 0
     status: Status | None = None
     runtime: Annotated[int, Field(ge=1, le=3000)] | None = None
+    completion: bool | None = None
     film: bool = False
     rewatch: bool = False
 
