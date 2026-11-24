@@ -231,6 +231,7 @@ def apply_import(db, payload, plan):
         raise HTTPException(409, "Подтвердите замену всей коллекции")
     backup = create_backup(db, payload.mode) if replace or plan.updated else None
     if replace:
+        db.execute(delete(WatchEvent))
         db.execute(delete(Item))
     for data, item in plan.entries:
         if item is None:

@@ -113,6 +113,7 @@ function updateSeason(item, context) {
       id,
       added: _added,
       updated: _updated,
+      revision: _revision,
       legacyDuplicate: _legacy,
       ...data
     } = item;
@@ -122,7 +123,7 @@ function updateSeason(item, context) {
         (sum, entry) => sum + entry.episodesTotal,
         0,
       );
-      await api(itemApi("detail", id, { expected: item.updated }), {
+      await api(itemApi("detail", id, { expected: item.revision }), {
         method: "PUT",
         data: {
           ...data,

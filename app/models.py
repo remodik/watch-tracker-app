@@ -19,6 +19,7 @@ class Item(Base):
     seasons_total: Mapped[int] = mapped_column("seasonsTotal", Integer)
     note: Mapped[str] = mapped_column(Text)
     updated: Mapped[int] = mapped_column(BigInteger, index=True)
+    revision: Mapped[str] = mapped_column(String(36))
     match_key: Mapped[str] = mapped_column(String(64), index=True)
     identity_key: Mapped[str | None] = mapped_column(String(64))
     search_text: Mapped[str] = mapped_column(Text)
@@ -55,6 +56,7 @@ class Backup(Base):
 class LibraryLock(Base):
     __tablename__ = "library_lock"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    generation: Mapped[str] = mapped_column(String(36))
 
 
 class LoginLock(Base):

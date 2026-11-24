@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
+import pytest
 from sqlalchemy import text
 
 from app.database import make_engine
@@ -169,13 +170,15 @@ def test_legacy_import_update_backup_and_restore(authorized):
     }
     assert authorized.post(path, json=restore).status_code == 200
     assert authorized.get("/api/export").json()["events"] == archive["events"]
-    assert library(authorized) == archive["items"]
+    assert [
+        {k: v for k, v in item.items() if k != "revision"} for item in library(authorized)
+    ] == archive["items"]
 
 
 def test_conflicting_edit_preserves_concurrent_progress(authorized):
     item = create(authorized, "Сезон", episodesTotal=10)
     params = {"id": item["id"]}
-    initial = item["updated"]
+    initial = item["revision"]
     assert authorized.post(
         "/api/items/progress", params=params, json={"unit": "episode"}
     ).is_success
@@ -186,3 +189,68 @@ def test_conflicting_edit_preserves_concurrent_progress(authorized):
     )
     assert result.status_code == 409
     assert authorized.get("/api/items/detail", params=params).json()["item"]["episodesDone"] == 1
+
+
+@pytest.mark.parametrize("mode", ["merge", "update", "replace"])
+@pytest.mark.parametrize("updated", [0, None, 253402300799999])
+def test_import_cannot_reuse_edit_revision(authorized, mode, updated):
+    item = create(authorized, "Import revision")
+    archive = authorized.get("/api/export").json()
+    archive["items"][0]["updated"] = item["updated"] if updated is None else updated
+    imported = authorized.post(
+        "/api/items/bulk-import",
+        json={"version": 2, "mode": mode, "confirm": True, "items": archive["items"]},
+    )
+    assert imported.is_success, imported.text
+    fresh = authorized.get("/api/items/detail", params={"id": item["id"]}).json()["item"]
+    assert (fresh["revision"] == item["revision"]) == (mode == "merge")
+    if mode != "merge":
+        result = authorized.put(
+            "/api/items/detail",
+            params={"id": item["id"], "expected": item["revision"]},
+            json={"title": "Stale edit"},
+        )
+        assert result.status_code == 409
+
+
+def test_missing_library_lock_rejects_write(authorized, db_url):
+    with make_engine(db_url).begin() as db:
+        db.execute(text("DELETE FROM library_lock"))
+    assert authorized.post("/api/items", json={"title": "Rejected"}).status_code == 503
+    assert not library(authorized)
+
+
+def test_progress_409_leaves_nested_tracking_intact(authorized):
+    item = create(
+        authorized,
+        "Episode limit",
+        episodesDone=1,
+        episodesTotal=1,
+        seasons=[{"number": 1, "episodesDone": 1, "episodesTotal": 2, "watchedEpisodes": [1]}],
+    )
+    params = {"id": item["id"]}
+    result = authorized.post(
+        "/api/items/progress",
+        params=params,
+        json={"unit": "episode", "season": 1, "delta": 1},
+    )
+    assert result.status_code == 409
+    assert authorized.get("/api/items/detail", params=params).json() == {"item": item, "events": []}
+
+
+@pytest.mark.parametrize("status", ["plan", "watching", "paused", "dropped"])
+def test_api_disallows_forged_rewatch(authorized, status):
+    response = authorized.post(
+        "/api/items",
+        json={"title": "Invalid rewatch", "status": "rewatching"},
+    )
+    assert response.status_code == 409
+    item = create(authorized, "Valid entry", status=status)
+    assert (
+        authorized.put(
+            "/api/items/detail",
+            params={"id": item["id"]},
+            json={"title": item["title"], "status": "watched", "rewatches": 4},
+        ).status_code
+        == 409
+    )

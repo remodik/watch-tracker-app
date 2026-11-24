@@ -164,6 +164,14 @@ function manualForm(item, prefill, saved) {
         .split(separator)
         .map((value) => value.trim())
         .filter(Boolean);
+    const changingType = item && item.type !== type.value;
+    if (
+      changingType &&
+      !window.confirm(
+        "Сменить тип? Текущий прогресс будет сброшен. История сохранится.",
+      )
+    )
+      return;
     const payload = {
       title: get("title"),
       type: type.value,
@@ -180,9 +188,6 @@ function manualForm(item, prefill, saved) {
       episodesDone: integer("episodesDone") ?? 0,
       episodesTotal: integer("episodesTotal") ?? 0,
       seasons: type.value === "anime" ? (data.seasons ?? []) : [],
-      carriedEpisodes: data.carriedEpisodes ?? 0,
-      rewatches: data.rewatches ?? 0,
-      rewatchInProgress: data.rewatchInProgress ?? false,
       metadata: {
         ...metadata,
         originalTitle: get("originalTitle"),
@@ -199,7 +204,10 @@ function manualForm(item, prefill, saved) {
     try {
       const entry = await api(
         item
-          ? itemApi("detail", item.id, { expected: item.updated })
+          ? itemApi("detail", item.id, {
+              expected: item.revision,
+              confirm_type_change: Boolean(changingType),
+            })
           : "/api/items",
         { method: item ? "PUT" : "POST", data: payload },
       );

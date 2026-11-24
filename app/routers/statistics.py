@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db, require_user
 from app.models import Item
-from app.services.library import archive_item
+from app.services.library import item_response
 from app.services.statistics import distributions, report, summary_items, upcoming
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
@@ -19,7 +19,7 @@ DB = Annotated[Session, Depends(get_db)]
 def dashboard(db: DB):
     def rows(*where, order=Item.added, limit=6):
         result = db.scalars(select(Item).where(*where).order_by(order.desc(), Item.id).limit(limit))
-        return [archive_item(item) for item in result]
+        return [item_response(item) for item in result]
 
     completed = Item.tracking["completed"].as_string()
     return {

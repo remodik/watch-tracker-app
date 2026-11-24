@@ -1,5 +1,6 @@
 import json
 import time
+from copy import deepcopy
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -29,8 +30,17 @@ def tracking(item):
         "rewatches": 0,
         "rewatchInProgress": False,
         "carriedEpisodes": 0,
-        **item.tracking,
+        **deepcopy(item.tracking),
     }
+
+
+def item_response(item):
+    return {**archive_item(item), "revision": item.revision}
+
+
+def touch_item(item):
+    item.updated = now_ms()
+    item.revision = uuid()
 
 
 def archive_item(item):
@@ -126,6 +136,7 @@ def assign(item, data, timestamp):
     item.search_text = search_key(item.title, data.genres, item.note, item.year, item.metadata_json)
     item.genre_search = genre_key(data.genres)
     item.updated = timestamp
+    item.revision = uuid()
 
 
 def add_item(db, data, imported=False):
@@ -134,6 +145,10 @@ def add_item(db, data, imported=False):
         id=(data.id if imported else None) or uuid(),
         added=data.added if imported and data.added is not None else timestamp,
     )
+    if not imported and (
+        data.status == "rewatching" or any(getattr(data, key) for key in SYSTEM_TRACKING)
+    ):
+        raise HTTPException(409, "Системные данные просмотра доступны через историю и импорт")
     assign(item, data, data.updated if imported and data.updated is not None else item.added)
     db.add(item)
     return item
@@ -157,12 +172,16 @@ def record(db, item, kind, **data):
     )
 
 
+SYSTEM_TRACKING = ("rewatches", "rewatchInProgress", "carriedEpisodes")
+
+
 def set_status(db, item, status):
     previous = item.status
     if status == previous:
         return
     state = tracking(item)
     rewatch = status == "watched" and state["rewatchInProgress"]
+    completion = status == "watched" and (rewatch or not state["completed"])
     if status == "rewatching" and not state["rewatchInProgress"]:
         if previous != "watched" and not state["completed"] and not state["rewatches"]:
             raise HTTPException(409, "Сначала отметьте произведение просмотренным")
@@ -183,26 +202,54 @@ def set_status(db, item, status):
         if state["rewatches"] >= 9999:
             raise HTTPException(409, "Достигнут предел повторных просмотров")
         state["rewatches"] += 1
-    if status == "watched":
+    if completion:
         state["completed"] = today()
-    item.status, item.tracking, item.updated = status, state, max(item.updated + 1, now_ms())
+    item.status, item.tracking = status, state
+    touch_item(item)
     record(
         db,
         item,
         "status",
         status=status,
         rewatch=rewatch,
-        film=item.type == "film" and status == "watched",
+        film=item.type == "film" and completion,
     )
 
 
-def update_item(db, item, data):
+def update_item(db, item, data, confirm_type_change=False):
     previous = tracking(item)
+    changing_type = item.type != data.type
+    if (
+        changing_type
+        and not confirm_type_change
+        and (
+            previous["episodesDone"]
+            or previous["carriedEpisodes"]
+            or item.seasons_done
+            or previous["seasons"]
+            or previous["rewatchInProgress"]
+        )
+    ):
+        raise HTTPException(409, "Подтвердите смену типа и сброс текущего прогресса")
+    if any(
+        key in data.model_fields_set and getattr(data, key) != previous[key]
+        for key in SYSTEM_TRACKING
+    ):
+        raise HTTPException(409, "Изменяйте повторные просмотры через статус")
+    data = data.model_copy(
+        update={
+            "rewatches": previous["rewatches"],
+            "rewatchInProgress": previous["rewatchInProgress"] and not changing_type,
+            "carriedEpisodes": previous["carriedEpisodes"] if data.type == "anime" else 0,
+        }
+    )
+    if data.status == "rewatching" and changing_type:
+        raise HTTPException(409, "Выберите статус после смены типа")
     previous_status = item.status
     season_delta = data.seasonsDone - item.seasons_done
     episode_delta = data.episodesDone - previous["episodesDone"]
     old_identity, old_match = item.identity_key, item.match_key
-    assign(item, data, max(item.updated + 1, now_ms()))
+    assign(item, data, now_ms())
     if item.match_key == old_match and not data.metadata.externalId and old_identity is None:
         item.identity_key = None
     if data.status != previous_status:
@@ -210,10 +257,10 @@ def update_item(db, item, data):
         set_status(db, item, data.status)
         if data.status != "rewatching":
             item.tracking = {
-                **item.tracking,
+                **deepcopy(item.tracking),
                 **{k: getattr(data, k) for k in ("started", "completed") if getattr(data, k)},
             }
-    if (season_delta or episode_delta) and data.status != "rewatching":
+    if (season_delta or episode_delta) and not changing_type and data.status != "rewatching":
         record(db, item, "progress", episodes=episode_delta, seasons=season_delta)
 
 
@@ -231,11 +278,12 @@ def change_progress(db, item, payload):
         )
     )
     season_delta = episode_delta = 0
+    next_seasons_done = item.seasons_done
     if unit == "season":
         next_value = item.seasons_done + payload.delta
         if not 0 <= next_value <= (item.seasons_total or 999):
             raise HTTPException(409, "Достигнута граница прогресса")
-        item.seasons_done = next_value
+        next_seasons_done = next_value
         season_delta = payload.delta
     else:
         episode_delta = payload.delta
@@ -291,14 +339,15 @@ def change_progress(db, item, payload):
             season["watchedEpisodes"], season["episodesDone"] = sorted(marked), done + episode_delta
             season_delta = int(bool(total and season["episodesDone"] == total)) - int(was_complete)
             if season_delta:
-                item.seasons_done = min(
+                next_seasons_done = min(
                     item.seasons_total or 999, max(0, item.seasons_done + season_delta)
                 )
         new_total = state["episodesDone"] + episode_delta
         if not 0 <= new_total <= (state["episodesTotal"] or 100000):
             raise HTTPException(409, "Достигнута граница прогресса")
         state["episodesDone"] = new_total
-    item.tracking, item.updated = state, max(item.updated + 1, now_ms())
+    item.seasons_done, item.tracking = next_seasons_done, state
+    touch_item(item)
     if item.status == "plan" and (episode_delta > 0 or season_delta > 0):
         set_status(db, item, "watching")
     record(db, item, "progress", episodes=episode_delta, seasons=season_delta)
@@ -359,7 +408,7 @@ def list_items(db, filters):
         .offset((filters.page - 1) * filters.limit)
     )
     return {
-        "items": [archive_item(i) for i in db.scalars(page)],
+        "items": [item_response(i) for i in db.scalars(page)],
         "total": count,
         "page": filters.page,
         "limit": filters.limit,

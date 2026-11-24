@@ -14,7 +14,6 @@ from app.schemas import (
     ItemInput,
     Progress,
     StatusChange,
-    Timestamp,
 )
 from app.services.import_export import create_backup
 from app.services.library import (
@@ -24,9 +23,10 @@ from app.services.library import (
     change_progress,
     duplicate,
     get_item,
+    item_response,
     list_items,
-    now_ms,
     set_status,
+    touch_item,
     update_item,
 )
 
@@ -47,7 +47,7 @@ def create(payload: ItemInput, db: DB):
         raise HTTPException(409, {"message": "Произведение уже в коллекции", "id": match.id})
     item = add_item(db, payload)
     db.commit()
-    return archive_item(item)
+    return item_response(item)
 
 
 @router.get("/detail")
@@ -59,14 +59,20 @@ def detail(id: Identifier, db: DB):
         .order_by(WatchEvent.at.desc(), WatchEvent.id.desc())
         .limit(100)
     )
-    return {"item": archive_item(item), "events": [archive_event(event) for event in events]}
+    return {"item": item_response(item), "events": [archive_event(event) for event in events]}
 
 
 @router.put("/detail")
-def update(id: Identifier, payload: ItemInput, db: DB, expected: Timestamp | None = None):
+def update(
+    id: Identifier,
+    payload: ItemInput,
+    db: DB,
+    expected: Identifier | None = None,
+    confirm_type_change: bool = False,
+):
     lock_library(db)
     item = get_item(db, id)
-    if expected is not None and expected != item.updated:
+    if expected is not None and expected != item.revision:
         raise HTTPException(
             409, "Запись изменилась в другой вкладке. Откройте редактирование заново."
         )
@@ -86,9 +92,11 @@ def update(id: Identifier, payload: ItemInput, db: DB, expected: Timestamp | Non
     match = duplicate(db, payload, excluding=id) if not same_identity else None
     if match:
         raise HTTPException(409, {"message": "Произведение уже в коллекции", "id": match.id})
-    update_item(db, item, payload)
+    if item.type != payload.type and confirm_type_change:
+        create_backup(db, "type-change")
+    update_item(db, item, payload, confirm_type_change)
     db.commit()
-    return archive_item(item)
+    return item_response(item)
 
 
 @router.delete("/detail")
@@ -107,7 +115,7 @@ def progress(id: Identifier, payload: Progress, db: DB):
     item = get_item(db, id)
     change_progress(db, item, payload)
     db.commit()
-    return archive_item(item)
+    return item_response(item)
 
 
 @router.post("/status")
@@ -116,16 +124,17 @@ def status(id: Identifier, payload: StatusChange, db: DB):
     item = get_item(db, id)
     set_status(db, item, payload.status)
     db.commit()
-    return archive_item(item)
+    return item_response(item)
 
 
 @router.post("/favorite")
 def favorite(id: Identifier, payload: FavoriteChange, db: DB):
     lock_library(db)
     item = get_item(db, id)
-    item.favorite, item.updated = payload.favorite, max(item.updated + 1, now_ms())
+    item.favorite = payload.favorite
+    touch_item(item)
     db.commit()
-    return archive_item(item)
+    return item_response(item)
 
 
 @router.put("/{id:path}", include_in_schema=False)
@@ -158,7 +167,7 @@ def legacy_update(id: Identifier, payload: ItemInput, db: DB):
         raise HTTPException(409, "Произведение уже в коллекции")
     update_item(db, current, data)
     db.commit()
-    return archive_item(current)
+    return item_response(current)
 
 
 @router.delete("/{id:path}", include_in_schema=False)

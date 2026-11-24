@@ -4,15 +4,19 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import exc, text
+from sqlalchemy import exc
 
 from app.config import Settings
 from app.database import make_engine, make_sessions
 from app.middleware import SecurityMiddleware
+from app.models import LibraryLock, LoginLock
 from app.routers import auth, backup, catalog, items, statistics
 from app.services.catalog import Catalog
 
@@ -28,12 +32,21 @@ def create_app(settings=None):
         settings.validate()
         engine = make_engine(settings.database_url)
         try:
-            with engine.connect() as connection:
-                revision = connection.execute(
-                    text("SELECT version_num FROM alembic_version")
-                ).scalar_one_or_none()
-            if revision != "0002_library":
-                raise RuntimeError("Upgrade the database with alembic upgrade head")
+            config = Config()
+            config.set_main_option("script_location", str(STATIC.parent / "migrations"))
+            heads = set(ScriptDirectory.from_config(config).get_heads())
+            try:
+                with engine.connect() as connection:
+                    revisions = set(MigrationContext.configure(connection).get_current_heads())
+                    if revisions != heads:
+                        raise RuntimeError("Upgrade the database with alembic upgrade head")
+                    for lock in (LibraryLock, LoginLock):
+                        if not connection.execute(
+                            lock.__table__.select().where(lock.id == 1)
+                        ).first():
+                            raise RuntimeError("Required database lock row is missing")
+            except exc.SQLAlchemyError:
+                raise RuntimeError("Database unavailable during startup checks") from None
             application.state.sessions = make_sessions(engine)
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(6.0, connect=3.0),
@@ -42,10 +55,6 @@ def create_app(settings=None):
             ) as client:
                 application.state.catalog = Catalog(client, settings)
                 yield
-        except exc.SQLAlchemyError:
-            raise RuntimeError(
-                "Database unavailable or unmigrated. Run alembic upgrade head."
-            ) from None
         finally:
             engine.dispose()
 

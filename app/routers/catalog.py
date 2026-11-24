@@ -10,7 +10,7 @@ from app.dependencies import require_user
 from app.identity import decode_genres, genre_key, search_key
 from app.models import Item
 from app.schemas import ExternalId, Identifier, Provider
-from app.services.library import archive_item, get_item, now_ms, tracking
+from app.services.library import get_item, item_response, now_ms, touch_item, tracking
 
 router = APIRouter(prefix="/api/catalog", dependencies=[Depends(require_user)])
 
@@ -77,9 +77,9 @@ def refresh(sessions, item_id, provider, catalog_id, catalog_item):
             item.genres_json = json.dumps(genres, ensure_ascii=False)
             item.genre_search = genre_key(genres)
         item.search_text = search_key(item.title, genres, item.note, item.year, item.metadata_json)
-        item.updated = max(item.updated + 1, now_ms())
+        touch_item(item)
         db.commit()
-        return archive_item(item)
+        return item_response(item)
 
 
 @router.post("/refresh")

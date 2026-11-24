@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database import lock_library
+from app.database import begin_library_snapshot, lock_library
 from app.dependencies import get_db, require_user
 from app.models import Backup
 from app.schemas import Identifier, ImportRequest
@@ -21,7 +21,7 @@ def download(data, filename):
 
 @router.get("/export")
 def export(db: DB):
-    lock_library(db)
+    begin_library_snapshot(db)
     return download(export_library(db), "watchlist.json")
 
 
