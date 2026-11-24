@@ -165,27 +165,22 @@ test("размеры экранов и границы офлайн-кеша", as
 });
 
 test("доступность входа, навигации и формы", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   const tags = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
   const audit = () => new AxeBuilder({ page }).withTags(tags).analyze();
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Вход в медиатеку" }),
   ).toBeVisible();
-  expect((await audit()).violations.map((violation) => violation.id)).toEqual(
-    [],
-  );
+  expect((await audit()).violations).toEqual([]);
   await login(page);
   await expect(
     page.getByRole("heading", { name: "Watch Tracker" }),
   ).toBeVisible();
-  expect((await audit()).violations.map((violation) => violation.id)).toEqual(
-    [],
-  );
+  expect((await audit()).violations).toEqual([]);
   await page.locator("#add").click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  expect((await audit()).violations.map((violation) => violation.id)).toEqual(
-    [],
-  );
+  expect((await audit()).violations).toEqual([]);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.locator("#add")).toBeFocused();
