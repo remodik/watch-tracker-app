@@ -268,3 +268,41 @@ test("PWA сохраняет согласованность двух верси�
     await request.post("/_test/release-a");
   }
 });
+
+test("запоздалый ответ каталога не меняет новый диалог", async ({ page }) => {
+  await page.route("**/api/catalog/status", (route) =>
+    route.fulfill({ json: { anilist: true, tmdb: true } }),
+  );
+  await page.route("**/api/catalog/anilist/search?*", (route) =>
+    route.fulfill({
+      json: [
+        { title: "Каталог A", type: "anime", metadata: { externalId: 7 } },
+      ],
+    }),
+  );
+  let finish;
+  const delayed = new Promise((resolve) => {
+    finish = resolve;
+  });
+  await page.route("**/api/catalog/anilist/7", async (route) => {
+    await delayed;
+    await route
+      .fulfill({ json: { title: "Опоздавший ответ", type: "anime" } })
+      .catch(() => {});
+  });
+  await page.goto("/");
+  await login(page);
+  await page.locator("#add").click();
+  await page.getByRole("button", { name: "Поиск в каталоге" }).click();
+  await page.getByLabel("Название в каталоге").fill("Каталог A");
+  const requested = page.waitForRequest("**/api/catalog/anilist/7");
+  await page.getByRole("button", { name: /Каталог A/ }).click();
+  await requested;
+  await page.keyboard.press("Escape");
+  await page.locator("#add").click();
+  await page.getByLabel("Название", { exact: true }).fill("Новый диалог");
+  finish();
+  await expect(page.getByLabel("Название", { exact: true })).toHaveValue(
+    "Новый диалог",
+  );
+});

@@ -30,6 +30,7 @@ def tracking(item):
         "completed": None,
         "rewatches": 0,
         "rewatchInProgress": False,
+        "hasCompleted": False,
         "carriedEpisodes": 0,
         **deepcopy(item.tracking),
     }
@@ -130,6 +131,7 @@ def assign(item, data, timestamp):
             "completed",
             "rewatches",
             "rewatchInProgress",
+            "hasCompleted",
             "carriedEpisodes",
         }
     )
@@ -170,7 +172,7 @@ def record(db, item, kind, **data):
     )
 
 
-SYSTEM_TRACKING = ("rewatches", "rewatchInProgress", "carriedEpisodes")
+SYSTEM_TRACKING = ("rewatches", "rewatchInProgress", "carriedEpisodes", "hasCompleted")
 
 
 def set_status(db, item, status):
@@ -179,9 +181,13 @@ def set_status(db, item, status):
         return
     state = tracking(item)
     rewatch = status == "watched" and state["rewatchInProgress"]
-    completion = status == "watched" and (rewatch or not state["completed"])
+    completed_before = bool(
+        state["hasCompleted"] or state["completed"] or state["rewatches"] or previous == "watched"
+    )
+    completion = status == "watched" and (rewatch or not completed_before)
+    state["hasCompleted"] = completed_before or completion
     if status == "rewatching" and not state["rewatchInProgress"]:
-        if previous != "watched" and not state["completed"] and not state["rewatches"]:
+        if not completed_before:
             raise HTTPException(409, "Сначала отметьте произведение просмотренным")
         state["rewatchInProgress"] = True
         state["carriedEpisodes"] = min(
@@ -195,6 +201,8 @@ def set_status(db, item, status):
         state["started"], state["completed"] = today(), None
     elif status == "watching" and state["started"] is None:
         state["started"] = today()
+    if status in {"plan", "dropped"}:
+        state["rewatchInProgress"] = False
     if rewatch:
         state["rewatchInProgress"] = False
         if state["rewatches"] >= 9999:
@@ -238,6 +246,7 @@ def update_item(db, item, data, confirm_type_change=False):
     data = data.model_copy(
         update={
             "rewatches": previous["rewatches"],
+            "hasCompleted": previous["hasCompleted"] or bool(previous["completed"]),
             "rewatchInProgress": previous["rewatchInProgress"] and not changing_type,
             "carriedEpisodes": previous["carriedEpisodes"] if data.type == "anime" else 0,
         }
@@ -245,10 +254,24 @@ def update_item(db, item, data, confirm_type_change=False):
     if data.status == "rewatching" and changing_type:
         raise HTTPException(409, "Выберите статус после смены типа")
     previous_status = item.status
+    if (
+        data.status == "rewatching"
+        and data.status != previous_status
+        and not (
+            previous_status == "watched"
+            or previous["rewatchInProgress"]
+            or previous["hasCompleted"]
+            or previous["completed"]
+            or previous["rewatches"]
+        )
+    ):
+        raise HTTPException(409, "Сначала отметьте произведение просмотренным")
     season_delta = data.seasonsDone - item.seasons_done
     episode_delta = data.episodesDone - previous["episodesDone"]
     old_identity, old_match = item.identity_key, item.match_key
     assign(item, data, now_ms())
+    if data.status != previous_status:
+        item.tracking = {**item.tracking, "completed": previous["completed"]}
     if item.match_key == old_match and not data.metadata.externalId and old_identity is None:
         item.identity_key = None
     if data.status != previous_status:

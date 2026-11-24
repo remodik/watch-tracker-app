@@ -5,14 +5,21 @@ from urllib.parse import urlsplit
 from dotenv import load_dotenv
 
 
+def managed_platform():
+    if os.getenv("RENDER") == "true":
+        return "Render"
+    if os.getenv("RAILWAY_ENVIRONMENT_ID"):
+        return "Railway"
+    return None
+
+
 def database_url(*, direct=False):
     url = os.environ.get("DATABASE_URL", "sqlite:///./watchlist.db")
     if direct:
         url = os.getenv("DATABASE_URL_DIRECT") or url
-    if os.getenv("RAILWAY_ENVIRONMENT_ID") and not url.startswith(
-        ("postgres://", "postgresql://", "postgresql+psycopg2://")
-    ):
-        raise RuntimeError("Railway requires a PostgreSQL DATABASE_URL")
+    platform = managed_platform()
+    if platform and not url.startswith(("postgres://", "postgresql://", "postgresql+psycopg2://")):
+        raise RuntimeError(f"{platform} requires a PostgreSQL DATABASE_URL")
     return url.replace("postgres://", "postgresql://", 1) if url.startswith("postgres://") else url
 
 
@@ -56,14 +63,17 @@ class Settings:
             raise RuntimeError("Backup retention and count must be positive")
         if self.environment not in {"local", "production"}:
             raise RuntimeError("APP_ENV must be local or production")
-        if os.getenv("RAILWAY_ENVIRONMENT_ID") and not self.production:
-            raise RuntimeError("Railway requires APP_ENV=production")
+        platform = managed_platform()
+        if platform and not self.production:
+            raise RuntimeError(f"{platform} requires APP_ENV=production")
         if self.disable_auth and self.environment != "local":
             raise RuntimeError("APP_DISABLE_AUTH is restricted to APP_ENV=local")
         if not self.disable_auth and not self.token.strip():
             raise RuntimeError("APP_TOKEN is required")
         if any(ord(c) < 32 or ord(c) == 127 or 0xD800 <= ord(c) <= 0xDFFF for c in self.token):
             raise RuntimeError("APP_TOKEN contains an unsupported character")
+        if self.production and len(self.token) < 32:
+            raise RuntimeError("APP_TOKEN must contain at least 32 characters in production")
         if len(self.token) > 1024 or len(self.token.encode()) > 4000:
             raise RuntimeError("APP_TOKEN exceeds the supported length")
         if self.origin:

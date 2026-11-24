@@ -172,6 +172,7 @@ class ItemInput(Input):
     completed: Annotated[str, StringConstraints(max_length=10)] | None = None
     carriedEpisodes: Annotated[int, Field(ge=0, le=1_000_000_000)] = 0
     rewatchInProgress: bool = False
+    hasCompleted: bool = False
     rewatches: Annotated[int, Field(ge=0, le=9999)] = 0
     metadata: Metadata = Field(default_factory=Metadata)
 

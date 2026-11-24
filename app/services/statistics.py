@@ -30,6 +30,7 @@ def summary_items(db):
             fields["rewatches"].as_integer().label("rewatches"),
             fields["rewatchInProgress"].as_boolean().label("rewatching"),
             fields["completed"].as_string().label("completed"),
+            fields["hasCompleted"].as_boolean().label("completed_once"),
             Item.metadata_json["runtime"].as_integer().label("runtime"),
         )
     ).all()
@@ -57,7 +58,15 @@ def distributions(items):
             episode_count
             if item.type == "anime"
             else (
-                int(bool(item.status == "watched" or item.completed or item.rewatching or repeats))
+                int(
+                    bool(
+                        item.status == "watched"
+                        or item.completed
+                        or item.completed_once
+                        or item.rewatching
+                        or repeats
+                    )
+                )
                 + repeats
             )
         )

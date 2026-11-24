@@ -63,15 +63,16 @@ def test_throttle_and_redaction(client):
 
 
 def test_production_cookie_and_revoke_all(db_url):
-    app = create_app(Settings(db_url, token="test", origin="https://tracker.test"))
+    token = "production-test-placeholder-key-2026"
+    app = create_app(Settings(db_url, token=token, origin="https://tracker.test"))
     with TestClient(app, base_url="https://tracker.test") as client:
         headers = {"X-Watch-Login": "1", "Origin": "https://tracker.test"}
-        response = client.post("/api/auth/login", headers=headers, json={"token": "test"})
+        response = client.post("/api/auth/login", headers=headers, json={"token": token})
         assert "__Host-watch_session=" in response.headers["set-cookie"]
         assert "Secure" in response.headers["set-cookie"]
         first = client.cookies.get("__Host-watch_session")
         client.cookies.clear()
-        assert client.post("/api/auth/login", headers=headers, json={"token": "test"}).is_success
+        assert client.post("/api/auth/login", headers=headers, json={"token": token}).is_success
         csrf = client.get("/api/auth/session").json()["csrf"]
         assert client.post("/api/auth/logout-all", headers={"X-CSRF-Token": csrf}).is_success
         client.cookies.set("__Host-watch_session", first)
@@ -100,3 +101,46 @@ def test_unauthorized_import_does_not_read_asgi_body(client):
     client.portal.call(client.app, scope, receive, send)
     assert messages[0]["status"] == 401
     assert b"content-security-policy" in dict(messages[0]["headers"])
+
+
+def test_auth_session_lookup_count(client):
+    from sqlalchemy import event
+
+    statements = []
+    engine = client.app.state.sessions.kw["bind"]
+    event.listen(engine, "before_cursor_execute", lambda *args: statements.append(args[2]))
+    assert client.get("/api/auth/session").status_code == 401
+    assert statements == []
+    response = client.post(
+        "/api/auth/login",
+        headers={"X-Watch-Login": "1"},
+        json={"token": "тестовый-ключ"},
+    )
+    assert response.is_success
+    statements.clear()
+    assert client.get("/api/auth/session").is_success
+    assert len(statements) == 1 and "auth_sessions" in statements[0]
+
+
+def test_uvicorn_proxy_only_resolves_trusted_peer():
+    import asyncio
+
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    async def expose(scope, receive, send):
+        return scope["client"]
+
+    async def check(peer):
+        middleware = ProxyHeadersMiddleware(expose, trusted_hosts="127.0.0.1")
+        return await middleware(
+            {
+                "type": "http",
+                "client": (peer, 8080),
+                "headers": [(b"x-forwarded-for", b"192.0.2.11")],
+            },
+            None,
+            None,
+        )
+
+    assert asyncio.run(check("192.0.2.22")) == ("192.0.2.22", 8080)
+    assert asyncio.run(check("127.0.0.1")) == ("192.0.2.11", 0)

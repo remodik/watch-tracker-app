@@ -124,3 +124,29 @@ def test_upgrade_copy_of_original_schema_and_restore(database, tmp_path):
 
         with ThreadPoolExecutor(2) as pool:
             assert sorted(pool.map(create, range(2))) == [201, 409]
+
+
+def test_sqlite_migration_serializes_and_rolls_back(tmp_path):
+    url = f"sqlite:///{tmp_path / 'interrupted.db'}"
+    alembic(url, "upgrade", "0001_legacy")
+    engine = create_engine(url)
+    with engine.begin() as db:
+        db.execute(
+            text("""INSERT INTO items VALUES
+            ('x', 10, 'anime', 'Original', 2000, 'plan', '[]', 0, 0, '')""")
+        )
+        db.exec_driver_sql("""CREATE TRIGGER reject_backfill BEFORE UPDATE ON items
+            BEGIN SELECT RAISE(ABORT, 'fixture'); END""")
+    with pytest.raises(subprocess.CalledProcessError):
+        alembic(url, "upgrade", "head")
+    with engine.begin() as db:
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "0001_legacy"
+        assert "updated" not in {row[1] for row in db.exec_driver_sql("PRAGMA table_info(items)")}
+        db.exec_driver_sql("DROP TRIGGER reject_backfill")
+    with ThreadPoolExecutor(2) as pool:
+        assert list(pool.map(lambda _: alembic(url, "upgrade", "head").returncode, range(2))) == [
+            0,
+            0,
+        ]
+    alembic(url, "check")
+    engine.dispose()

@@ -262,3 +262,69 @@ def test_catalog_optional_fields_and_titles():
         {},
     )
     assert film.metadata.alternateTitles == ["Alt"]
+
+
+def test_local_calendar_dates(monkeypatch, authorized):
+    from datetime import datetime
+
+    from app import viewing_time
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, zone):
+            return datetime(2025, 1, 1, 12, 30, tzinfo=UTC).astimezone(zone)
+
+    monkeypatch.setattr(viewing_time, "datetime", Clock)
+    for index, (zone, day) in enumerate(
+        [
+            ("Pacific/Kiritimati", "2025-01-02"),
+            ("Etc/GMT+12", "2025-01-01"),
+            ("Europe/Moscow", "2025-01-01"),
+            ("Asia/Tokyo", "2025-01-01"),
+        ]
+    ):
+        result = authorized.post(
+            "/api/items",
+            headers={"X-Watch-Timezone": zone},
+            json={"title": f"Zone {index}", "status": "plan", "started": day},
+        )
+        assert result.is_success, result.text
+        state = authorized.post(
+            "/api/items/status",
+            params={"id": result.json()["id"]},
+            json={"status": "watched"},
+            headers={"X-Watch-Timezone": zone},
+        )
+        assert state.json()["completed"] == day
+    rejected = authorized.post(
+        "/api/items",
+        headers={"X-Watch-Timezone": "Etc/GMT+12"},
+        json={"title": "Future", "started": "2025-01-02"},
+    )
+    assert rejected.status_code == 422
+
+
+def test_cancellation_keeps_seen_episodes_without_counting_rewatch(authorized):
+    item = create(authorized, "Cancel rewatch", status="watched", episodesDone=2, episodesTotal=5)
+    params = {"id": item["id"]}
+
+    def transition(status):
+        response = authorized.post("/api/items/status", params=params, json={"status": status})
+        assert response.is_success, response.text
+        return response.json()
+
+    transition("rewatching")
+    authorized.post("/api/items/progress", params=params, json={"delta": 1})
+    assert transition("paused")["rewatchInProgress"]
+    assert transition("rewatching")["episodesDone"] == 1
+    cancelled = transition("plan")
+    assert cancelled["rewatches"] == 0 and not cancelled["rewatchInProgress"]
+    again = transition("rewatching")
+    assert again["carriedEpisodes"] == 3
+    state = transition("watched")
+    assert state["rewatches"] == 1
+    transition("paused")
+    assert transition("watched")["rewatches"] == 1
+    report = authorized.get("/api/statistics").json()
+    assert report["episodes"] == 3
+    assert report["annual"]["completed"] == 1
