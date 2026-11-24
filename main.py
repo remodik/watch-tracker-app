@@ -66,7 +66,7 @@ def row_to_dict(i: Item) -> dict:
 APP_TOKEN = os.environ.get("APP_TOKEN")  # set this in Railway env vars
 
 
-def check_auth(x_auth_token: Optional[str] = Header(None)):
+def check_auth(x_auth_token: str | None = Header(None)):
     if APP_TOKEN and x_auth_token != APP_TOKEN:
         raise HTTPException(status_code=401, detail="Неверный токен")
     return True
