@@ -205,7 +205,28 @@ def anilist_error_format(response):
     except ValueError:
         return "invalid JSON"
     errors = optional_object(data).get("errors")
-    return "GraphQL errors" if isinstance(errors, list) and errors else "JSON"
+    if not isinstance(errors, list) or not errors:
+        return "JSON"
+    categories = sorted({graphql_error_category(error) for error in errors[:10]})
+    return "GraphQL errors: " + ", ".join(categories)
+
+
+def graphql_error_category(raw_error):
+    error = optional_object(raw_error)
+    code = optional_object(error.get("extensions")).get("code")
+    message = error.get("message")
+    message = message if isinstance(message, str) else ""
+    if code == "GRAPHQL_PARSE_FAILED" or message.startswith("Syntax Error"):
+        return "syntax"
+    if message.startswith("Variable "):
+        return "variables"
+    if code == "GRAPHQL_VALIDATION_FAILED" or message.startswith(
+        ("Cannot query field ", "Unknown argument ", "Unknown type ")
+    ):
+        return "validation"
+    if code == "INTERNAL_SERVER_ERROR" or isinstance(error.get("path"), list):
+        return "execution"
+    return "unclassified"
 
 
 class Catalog:

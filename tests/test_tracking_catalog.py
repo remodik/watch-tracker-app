@@ -380,7 +380,27 @@ def test_status_transition_matrix(previous, target):
         (
             "application/graphql-response+json",
             '{"errors":[{"message":"private-marker"}]}',
-            "GraphQL errors",
+            "GraphQL errors: unclassified",
+        ),
+        (
+            "application/json",
+            '{"errors":[{"message":"Cannot query field private-marker"}]}',
+            "GraphQL errors: validation",
+        ),
+        (
+            "application/json",
+            '{"errors":[{"message":"Variable private-marker"}]}',
+            "GraphQL errors: variables",
+        ),
+        (
+            "application/json",
+            '{"errors":[{"message":"private-marker","path":["Page","media"]}]}',
+            "GraphQL errors: execution",
+        ),
+        (
+            "application/json",
+            '{"errors":[{"message":"private-marker","extensions":{"code":"GRAPHQL_PARSE_FAILED"}}]}',
+            "GraphQL errors: syntax",
         ),
         ("text/html; charset=UTF-8", "<html>private-marker</html>", "HTML"),
         ("application/json", '{"message":"private-marker"}', "JSON"),
