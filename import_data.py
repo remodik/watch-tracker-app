@@ -1,57 +1,53 @@
-"""
-Разовый импорт watchlist.json в базу данных.
+"""Import a v1 watchlist or v2 archive into an already migrated database."""
 
-Запуск локально (SQLite):
-    python import_data.py watchlist.json
-
-Запуск против удалённой базы (Neon/Postgres) — задай DATABASE_URL перед запуском:
-    DATABASE_URL="postgresql://user:pass@host/dbname?sslmode=require" python import_data.py watchlist.json
-
-Скрипт пишет напрямую в базу через SQLAlchemy (без HTTP/токена), дубликаты по
-названию (без учёта регистра) пропускаются.
-"""
-import sys
+import argparse
 import json
+from pathlib import Path
 
-from main import SessionLocal, Item, norm
+from dotenv import load_dotenv
+from fastapi import HTTPException
+from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.config import database_url
+from app.database import lock_library, make_engine, make_sessions
+from app.schemas import ImportRequest
+from app.services.import_export import apply_import, plan_import
+
 
 def main():
-    if len(sys.argv) < 2:
-        print("Использование: python import_data.py watchlist.json")
-        sys.exit(1)
-
-    with open(sys.argv[1], encoding="utf-8") as f:
-        data = json.load(f)
-
-    if not isinstance(data, list):
-        print("Файл должен содержать JSON-массив записей")
-        sys.exit(1)
-
-    db = SessionLocal()
-    existing = {norm(r.title) for r in db.query(Item).all()}
-    added = 0
-    for d in data:
-        title = (d.get("title") or "").strip()
-        if not title or norm(title) in existing:
-            continue
-        item = Item(
-            id=d.get("id") or __import__("secrets").token_hex(4),
-            added=int(d.get("added") or 0) or __import__("time").time_ns() // 1_000_000,
-            type=d.get("type", "anime"),
-            title=title,
-            year=d.get("year"),
-            status=d.get("status", "watched"),
-            genres=json.dumps(d.get("genres") or [], ensure_ascii=False),
-            seasonsDone=int(d.get("seasonsDone") or 0),
-            seasonsTotal=int(d.get("seasonsTotal") or 0),
-            note=d.get("note") or "",
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("file", type=Path)
+    parser.add_argument("--preview", action="store_true")
+    parser.add_argument("--mode", choices=("merge", "update", "replace"), default="merge")
+    parser.add_argument("--confirm-replace", action="store_true")
+    args = parser.parse_args()
+    load_dotenv()
+    engine = make_engine(database_url())
+    try:
+        if args.file.stat().st_size > 16 * 1024 * 1024:
+            parser.exit(1, "Архив превышает 16 МиБ.\n")
+        raw = json.loads(args.file.read_text(encoding="utf-8-sig"))
+        archive = {"items": raw} if isinstance(raw, list) else raw
+        payload = ImportRequest.model_validate(
+            {
+                **{k: v for k, v in archive.items() if k in {"version", "items", "events"}},
+                "mode": args.mode,
+                "confirm": args.confirm_replace,
+            }
         )
-        db.add(item)
-        existing.add(norm(title))
-        added += 1
-    db.commit()
-    db.close()
-    print(f"Импортировано записей: {added} (из {len(data)} в файле)")
+        with make_sessions(engine)() as db:
+            if not args.preview:
+                lock_library(db)
+            plan = plan_import(db, payload)
+            result = plan.summary() if args.preview else apply_import(db, payload, plan)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+    except HTTPException as exc:
+        parser.exit(1, json.dumps(exc.detail, ensure_ascii=False) + "\n")
+    except (AttributeError, OSError, ValueError, ValidationError, SQLAlchemyError):
+        parser.exit(1, "Импорт отменён. Проверьте файл и состояние базы.\n")
+    finally:
+        engine.dispose()
 
 
 if __name__ == "__main__":
