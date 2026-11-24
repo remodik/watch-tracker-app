@@ -2,7 +2,6 @@ import os
 import time
 import json
 import secrets
-from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.staticfiles import StaticFiles
@@ -77,9 +76,9 @@ def check_auth(x_auth_token: Optional[str] = Header(None)):
 class ItemIn(BaseModel):
     type: str
     title: str
-    year: Optional[int] = None
+    year: int | None= None
     status: str = "watched"
-    genres: List[str] = Field(default_factory=list)
+    genres: list[str] = Field(default_factory=list)
     seasonsDone: int = 0
     seasonsTotal: int = 0
     note: str = ""
@@ -92,7 +91,7 @@ class ItemOut(ItemIn):
 
 class BulkImport(BaseModel):
     mode: str  # 'merge' | 'replace'
-    items: List[dict]
+    items: list[dict]
 
 
 # ---------- app ----------
@@ -103,7 +102,7 @@ def norm(s: str) -> str:
     return " ".join(str(s or "").strip().lower().split())
 
 
-@app.get("/api/items", response_model=List[ItemOut])
+@app.get("/api/items", response_model=list[ItemOut])
 def list_items(db: Session = Depends(get_db), _=Depends(check_auth)):
     rows = db.query(Item).order_by(Item.added.desc()).all()
     return [row_to_dict(r) for r in rows]
