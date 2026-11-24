@@ -13,6 +13,7 @@ from sqlalchemy.engine import make_url
 
 from app.config import Settings
 from app.main import create_app
+from app.preflight import inspect_items
 from tests.conftest import ROOT, alembic, login
 
 
@@ -64,6 +65,8 @@ def test_upgrade_copy_of_original_schema_and_restore(database, tmp_path):
                 {"id": "same-title", "added": 1660000010000, "title": "тихий берег"},
             ],
         )
+    with engine.connect() as connection:
+        assert inspect_items(connection) == {"count": 2, "invalid": [], "duplicates": 1}
     engine.dispose()
     alembic(database, "upgrade", "head")
     alembic(database, "upgrade", "head")
