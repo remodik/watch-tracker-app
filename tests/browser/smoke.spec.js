@@ -129,7 +129,7 @@ test("импорт с предпросмотром, экспорт и мобил
 test("размеры экранов и границы офлайн-кеша", async ({ page, context }) => {
   await page.goto("/");
   await login(page);
-  for (const width of [320, 375, 390, 768, 1024, 1440, 1920]) {
+  for (const width of [320, 360, 375, 390, 768, 1024, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(
       page.getByRole("heading", { name: "Watch Tracker" }),
@@ -305,4 +305,35 @@ test("запоздалый ответ каталога не меняет нов�
   await expect(page.getByLabel("Название", { exact: true })).toHaveValue(
     "Новый диалог",
   );
+});
+
+test("импорт объясняет ошибку формата и позволяет заменить файл", async ({
+  page,
+}) => {
+  await page.goto("/settings");
+  await login(page);
+  await page.getByRole("button", { name: "Импорт JSON" }).click();
+  for (const [content, message] of [
+    ["null", /Ожидается список/],
+    ['{"items":[],"version":99}', /версия архива не поддерживается/],
+    ['{"items":[],"events":false}', /Поле events/],
+    ["{", /Некорректный JSON/],
+  ]) {
+    await page.getByLabel("JSON-файл").setInputFiles({
+      name: "archive.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(content),
+    });
+    await page.getByRole("button", { name: "Предпросмотр" }).click();
+    await expect(
+      page.getByRole("alert").filter({ hasText: message }),
+    ).toBeVisible();
+  }
+  await page.getByLabel("JSON-файл").setInputFiles({
+    name: "archive.json",
+    mimeType: "application/json",
+    buffer: Buffer.from('[{"title":"Валидный файл"}]'),
+  });
+  await page.getByRole("button", { name: "Предпросмотр" }).click();
+  await expect(page.getByText(/Новые: 1/)).toBeVisible();
 });

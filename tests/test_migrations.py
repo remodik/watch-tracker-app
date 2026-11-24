@@ -150,3 +150,40 @@ def test_sqlite_migration_serializes_and_rolls_back(tmp_path):
         ]
     alembic(url, "check")
     engine.dispose()
+
+
+def test_export_snapshot_includes_items_and_events_from_one_generation(database):
+    from sqlalchemy import event
+
+    alembic(database, "upgrade", "head")
+    app = create_app(Settings(database, environment="local", token="тестовый-ключ"))
+    with TestClient(app) as client:
+        login(client)
+        item = client.post("/api/items", json={"title": "Snapshot", "status": "plan"}).json()
+        engine = app.state.sessions.kw["bind"]
+        if engine.dialect.name == "sqlite":
+            with engine.connect() as connection:
+                connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+        fired = False
+
+        def after_statement(_conn, _cursor, statement, *_):
+            nonlocal fired
+            if "FROM items ORDER BY items.added, items.id" not in statement or fired:
+                return
+            fired = True
+            response = client.post(
+                "/api/items/status",
+                params={"id": item["id"]},
+                json={"status": "watched"},
+            )
+            assert response.is_success
+
+        with ThreadPoolExecutor(1) as pool:
+            # The nested request uses a separate connection and commits before events are read.
+            event.listen(engine, "after_cursor_execute", after_statement)
+            result = pool.submit(client.get, "/api/export").result(timeout=15)
+            event.remove(engine, "after_cursor_execute", after_statement)
+        assert fired and result.is_success
+        assert result.json()["items"][0]["status"] == "plan"
+        assert result.json()["events"] == []
+        assert len(client.get("/api/export").json()["events"]) == 1
