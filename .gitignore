@@ -4,3 +4,8 @@ watchlist.db
 .venv/
 *.log
 .env
+watchlist.db-*
+node_modules/
+test-results/
+playwright-report/
+*.sqlite3

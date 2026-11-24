@@ -1,0 +1,180 @@
+@media (max-width: 1030px) {
+  :root {
+    --side-width: 195px;
+    --spacing: 22px;
+  }
+  .hero {
+    min-height: 220px;
+    padding: 25px;
+  }
+}
+@media (max-width: 760px) {
+  :root {
+    --spacing: 16px;
+  }
+  .shell {
+    display: block;
+  }
+  .sidebar {
+    display: none;
+  }
+  .topbar {
+    padding: 10px var(--spacing);
+    padding-top: max(10px, env(safe-area-inset-top));
+    min-height: 56px;
+    gap: 8px;
+  }
+  .section-name,
+  #quick-settings,
+  kbd {
+    display: none;
+  }
+  .global-search {
+    width: 100%;
+    margin: 0;
+  }
+  .global-search input[type="search"] {
+    padding-right: 10px;
+  }
+  #add {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  #add span {
+    display: none;
+  }
+  .bottom-nav {
+    padding: 5px max(7px, env(safe-area-inset-right))
+      max(5px, env(safe-area-inset-bottom)) max(7px, env(safe-area-inset-left));
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 4;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    border-top: 1px solid var(--border);
+    background: var(--sidebar);
+  }
+  .bottom-nav .nav-link {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 3px;
+    padding: 4px 1px;
+    min-height: 47px;
+    font-size: clamp(0.57rem, 2vw, 0.72rem);
+    text-align: center;
+  }
+  .bottom-nav .icon {
+    width: 17px;
+    height: 17px;
+  }
+  .content {
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+  .hero {
+    min-height: 197px;
+    padding: 20px;
+    border-radius: var(--radius-lg);
+    background-position: 65% center;
+  }
+  .hero::after {
+    background: linear-gradient(90deg, #100c1af0 0%, #100c1acb 55%, #100c1a5a);
+  }
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .poster-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+  .card-actions .button {
+    min-height: 40px;
+    width: 40px;
+  }
+  .columns {
+    grid-template-columns: 1fr;
+  }
+  .panel {
+    padding: 12px;
+  }
+  dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
+    margin: auto 0 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .detail-banner {
+    grid-template-columns: 75px minmax(0, 1fr);
+    gap: 11px;
+    padding: 13px;
+  }
+  .notification-stack {
+    bottom: calc(65px + env(safe-area-inset-bottom));
+    right: 12px;
+  }
+  .release-row {
+    grid-template-columns: 1fr;
+  }
+  input:not([type="checkbox"]),
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+}
+@media (max-width: 355px) {
+  .continue-card {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+  .continue-card .poster {
+    width: 42px;
+  }
+  .list-card {
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 7px;
+  }
+  .list-card .poster {
+    width: 42px;
+  }
+  .list-card > .card-actions {
+    grid-column: 2;
+  }
+  .calendar-cell {
+    padding: 2px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
+
+@media (max-width: 760px) {
+  .dashboard-metrics .metric {
+    grid-template-columns: 25px minmax(0, 1fr);
+    padding: 8px 10px;
+    gap: 2px 5px;
+  }
+  .dashboard-metrics .metric .icon {
+    grid-row: span 2;
+    align-self: center;
+  }
+  .dashboard-metrics .metric b {
+    font-size: 1.2rem;
+  }
+}

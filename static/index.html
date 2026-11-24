@@ -1,609 +1,127 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Архив просмотренного</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Outfit:wght@300;400;500;600&display=swap');
-
-:root{
-  --bg:#0e0d13;
-  --bg2:#16141d;
-  --panel:#1c1a26;
-  --panel2:#23202f;
-  --ink:#ece8f5;
-  --muted:#8a85a0;
-  --line:#2e2a3d;
-  --accent:#e8536a;
-  --accent2:#f0a94d;
-  --anime:#9a6cf0;
-  --film:#4dc9c0;
-  --gold:#f0c14d;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{
-  font-family:'Outfit',sans-serif;
-  background:
-    radial-gradient(900px 500px at 85% -5%, rgba(154,108,240,.14), transparent 60%),
-    radial-gradient(800px 600px at 0% 100%, rgba(77,201,192,.10), transparent 55%),
-    var(--bg);
-  color:var(--ink);
-  min-height:100vh;
-  padding:0 0 80px;
-}
-.wrap{max-width:1180px;margin:0 auto;padding:0 22px}
-
-header{
-  padding:46px 0 26px;
-  border-bottom:1px solid var(--line);
-  margin-bottom:30px;
-}
-.title{
-  font-family:'Fraunces',serif;
-  font-size:clamp(2.4rem,5vw,3.6rem);
-  font-weight:600;
-  letter-spacing:-.02em;
-  line-height:.98;
-}
-.sub{color:var(--muted);margin-top:10px;font-size:1.02rem;font-weight:300;max-width:560px}
-
-.stats{display:flex;gap:26px;margin-top:24px;flex-wrap:wrap}
-.stat{display:flex;flex-direction:column}
-.stat b{font-family:'Fraunces',serif;font-size:1.9rem;line-height:1}
-.stat span{color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
-
-/* controls */
-.toolbar{
-  display:flex;gap:14px;flex-wrap:wrap;align-items:center;
-  margin-bottom:22px;
-}
-.search{
-  flex:1;min-width:240px;position:relative;
-}
-.search input{
-  width:100%;padding:14px 16px 14px 44px;
-  background:var(--panel);border:1px solid var(--line);
-  border-radius:14px;color:var(--ink);font-family:inherit;font-size:.98rem;
-  transition:border-color .2s,background .2s;
-}
-.search input:focus{outline:none;border-color:var(--accent);background:var(--panel2)}
-.search svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);width:18px;height:18px;stroke:var(--muted)}
-
-.btn{
-  padding:13px 22px;border-radius:14px;border:1px solid var(--line);
-  background:var(--accent);color:#fff;font-family:inherit;font-weight:600;
-  font-size:.95rem;cursor:pointer;white-space:nowrap;
-  transition:transform .12s,filter .2s;
-}
-.btn:hover{filter:brightness(1.08)}
-.btn:active{transform:scale(.97)}
-.btn.ghost{background:var(--panel);color:var(--ink)}
-.btn.ghost:hover{background:var(--panel2);filter:none}
-.btn.sm{padding:10px 16px;font-size:.86rem}
-
-/* filter row */
-.filters{
-  display:flex;gap:10px;flex-wrap:wrap;align-items:center;
-  background:var(--bg2);border:1px solid var(--line);
-  border-radius:16px;padding:14px 16px;margin-bottom:14px;
-}
-.fgroup{display:flex;flex-direction:column;gap:6px}
-.fgroup label{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
-.fgroup select,.fgroup .chips{display:flex;gap:6px}
-select{
-  padding:9px 12px;background:var(--panel);border:1px solid var(--line);
-  border-radius:10px;color:var(--ink);font-family:inherit;font-size:.88rem;cursor:pointer;
-}
-select:focus{outline:none;border-color:var(--accent)}
-.pill{
-  padding:8px 14px;border-radius:999px;border:1px solid var(--line);
-  background:var(--panel);color:var(--muted);font-size:.84rem;cursor:pointer;
-  font-weight:500;transition:all .15s;
-}
-.pill.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.pill.anime.on{background:var(--anime);border-color:var(--anime);color:#fff}
-.pill.film.on{background:var(--film);border-color:var(--film);color:#06201e}
-.spacer{flex:1}
-.clearf{font-size:.82rem;color:var(--accent);cursor:pointer;background:none;border:none;font-family:inherit}
-.count{color:var(--muted);font-size:.86rem;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-.tools{display:flex;gap:8px;margin-left:auto}
-.tools button{
-  background:var(--panel);border:1px solid var(--line);color:var(--muted);
-  font-family:inherit;font-size:.8rem;padding:7px 12px;border-radius:9px;cursor:pointer;transition:all .15s;
-}
-.tools button:hover{background:var(--panel2);color:var(--ink)}
-
-/* grid */
-.grid{
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));
-  gap:18px;margin-top:12px;
-}
-.card{
-  background:var(--panel);border:1px solid var(--line);border-radius:18px;
-  padding:20px;position:relative;overflow:hidden;
-  transition:transform .18s,border-color .18s;
-}
-.card:hover{transform:translateY(-3px);border-color:var(--panel2)}
-.card::before{
-  content:"";position:absolute;top:0;left:0;width:4px;height:100%;
-}
-.card.anime::before{background:var(--anime)}
-.card.film::before{background:var(--film)}
-.card .type{
-  display:inline-block;font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;
-  padding:4px 9px;border-radius:6px;font-weight:600;margin-bottom:10px;
-}
-.card.anime .type{background:rgba(154,108,240,.16);color:var(--anime)}
-.card.film .type{background:rgba(77,201,192,.16);color:var(--film)}
-.card h3{font-family:'Fraunces',serif;font-size:1.3rem;font-weight:600;line-height:1.15;margin-bottom:8px}
-.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
-.tag{font-size:.74rem;background:var(--panel2);color:var(--muted);padding:4px 10px;border-radius:7px}
-.note{color:var(--muted);font-size:.88rem;line-height:1.45;margin-top:8px;font-weight:300}
-.seasons{margin:12px 0 4px}
-.seasons .slabel{display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);margin-bottom:6px}
-.seasons .slabel b{color:var(--ink);font-weight:600}
-.sbar{height:7px;background:var(--panel2);border-radius:99px;overflow:hidden}
-.sbar i{display:block;height:100%;border-radius:99px;transition:width .3s}
-.card.anime .sbar i{background:var(--anime)}
-.card.film .sbar i{background:var(--film)}
-.cbar{display:flex;gap:8px;margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
-.iconbtn{
-  background:none;border:none;color:var(--muted);cursor:pointer;font-size:.82rem;
-  font-family:inherit;padding:4px 8px;border-radius:7px;transition:all .15s;
-}
-.iconbtn:hover{background:var(--panel2);color:var(--ink)}
-.iconbtn.del:hover{color:var(--accent)}
-.status{font-size:.74rem;padding:3px 8px;border-radius:6px;margin-left:auto;align-self:center}
-.status.watched{background:rgba(77,201,192,.16);color:var(--film)}
-.status.watching{background:rgba(240,169,77,.16);color:var(--accent2)}
-.status.plan{background:rgba(138,133,160,.16);color:var(--muted)}
-
-.empty{
-  text-align:center;padding:70px 20px;color:var(--muted);
-  grid-column:1/-1;
-}
-.empty h3{font-family:'Fraunces',serif;font-size:1.5rem;color:var(--ink);margin-bottom:8px}
-
-/* modal */
-.overlay{
-  position:fixed;inset:0;background:rgba(8,7,12,.72);backdrop-filter:blur(6px);
-  display:none;align-items:center;justify-content:center;z-index:50;padding:20px;
-}
-.overlay.show{display:flex}
-.modal{
-  background:var(--bg2);border:1px solid var(--line);border-radius:22px;
-  width:100%;max-width:520px;max-height:90vh;overflow-y:auto;padding:30px;
-}
-.modal h2{font-family:'Fraunces',serif;font-size:1.7rem;margin-bottom:20px;font-weight:600}
-.field{margin-bottom:16px}
-.field label{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:7px}
-.field input,.field select,.field textarea{
-  width:100%;padding:12px 14px;background:var(--panel);border:1px solid var(--line);
-  border-radius:11px;color:var(--ink);font-family:inherit;font-size:.95rem;
-}
-.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
-.field textarea{resize:vertical;min-height:70px}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.typetoggle{display:flex;gap:10px}
-.typetoggle .pill{flex:1;text-align:center;padding:12px}
-.warn{color:var(--accent2);font-size:.84rem;margin-top:-6px;margin-bottom:12px;display:none}
-.modal-actions{display:flex;gap:12px;margin-top:24px}
-.modal-actions .btn{flex:1}
-.toast{
-  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
-  background:var(--panel2);border:1px solid var(--line);color:var(--ink);
-  padding:13px 22px;border-radius:12px;font-size:.9rem;opacity:0;pointer-events:none;
-  transition:all .25s;z-index:80;box-shadow:0 10px 30px rgba(0,0,0,.4);
-}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-@media(max-width:520px){.row2{grid-template-columns:1fr}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <header>
-    <h1 class="title">Архив просмотренного</h1>
-    <div class="stats" id="stats"></div>
-  </header>
-
-  <div class="toolbar">
-    <div class="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-      <input id="q" placeholder="Поиск по названию, жанру, заметкам…">
-    </div>
-    <button class="btn" id="addBtn">+ Добавить</button>
-  </div>
-
-  <div class="filters">
-    <div class="fgroup">
-      <label>Тип</label>
-      <div class="chips">
-        <button class="pill on" data-type="all">Всё</button>
-        <button class="pill anime" data-type="anime">Аниме</button>
-        <button class="pill film" data-type="film">Фильмы</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0c0c12" />
+    <meta name="description" content="Персональная медиатека аниме и фильмов" />
+    <title>Watch Tracker</title>
+    <link rel="icon" href="/assets/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/assets/icons/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/assets/css/tokens.css" />
+    <link rel="stylesheet" href="/assets/css/layout.css" />
+    <link rel="stylesheet" href="/assets/css/components.css" />
+    <link rel="stylesheet" href="/assets/css/responsive.css" />
+    <script type="module" src="/assets/js/app.js"></script>
+  </head>
+  <body>
+    <a href="#content" class="skip-link">К содержимому</a>
+    <div id="boot" class="boot" role="status">Загрузка Watch Tracker…</div>
+    <main id="login" class="login" hidden>
+      <section class="login-card">
+        <div class="brand" id="login-brand"></div>
+        <h1>Вход в медиатеку</h1>
+        <p class="muted">Введите ключ доступа к личной коллекции.</p>
+        <form id="login-form" class="stack">
+          <label class="field"
+            >Ключ доступа
+            <input
+              type="password"
+              name="token"
+              required
+              maxlength="1024"
+              autocomplete="current-password"
+            />
+          </label>
+          <button class="button primary" type="submit">Войти</button>
+          <p class="form-error" id="login-error" role="alert" hidden></p>
+        </form>
+      </section>
+    </main>
+    <div id="shell" class="shell" hidden>
+      <aside class="sidebar">
+        <div class="sidebar-heading">
+          <a href="/" class="brand" id="brand" aria-label="Watch Tracker"></a>
+          <button
+            id="collapse"
+            class="button icon-button subtle"
+            type="button"
+            aria-label="Свернуть панель"
+          ></button>
+        </div>
+        <nav id="sidebar-nav" aria-label="Основная навигация"></nav>
+        <div class="sidebar-footer">
+          <div class="profile-mark" id="profile-mark"></div>
+          <div class="profile-name">
+            <b>Личная медиатека</b><small>Watch Tracker</small>
+          </div>
+          <a
+            href="/settings"
+            id="profile-settings"
+            class="button icon-button subtle"
+            aria-label="Настройки профиля"
+          ></a>
+        </div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar">
+          <span id="section-name" class="section-name">Обзор</span>
+          <form id="global-search" role="search" class="global-search">
+            <span id="search-icon"></span>
+            <input
+              type="search"
+              name="q"
+              aria-label="Поиск в медиатеке"
+              placeholder="Поиск в медиатеке…"
+              maxlength="160"
+            />
+            <kbd aria-hidden="true">/</kbd>
+          </form>
+          <div class="top-actions">
+            <button
+              id="add"
+              class="button primary"
+              type="button"
+              aria-label="Добавить произведение"
+            ></button>
+            <a
+              href="/settings"
+              id="quick-settings"
+              class="button icon-button outline"
+              aria-label="Настройки"
+            ></a>
+          </div>
+        </header>
+        <main id="content" class="content" tabindex="-1"></main>
       </div>
+      <nav
+        class="bottom-nav"
+        id="bottom-nav"
+        aria-label="Мобильная навигация"
+      ></nav>
     </div>
-    <div class="fgroup">
-      <label>Жанр</label>
-      <select id="fGenre"><option value="">Любой</option></select>
-    </div>
-    <div class="fgroup">
-      <label>Статус</label>
-      <select id="fStatus">
-        <option value="">Любой</option>
-        <option value="watched">Просмотрено</option>
-        <option value="watching">Смотрю</option>
-        <option value="plan">В планах</option>
-      </select>
-    </div>
-    <div class="fgroup">
-      <label>Сортировка</label>
-      <select id="fSort">
-        <option value="added">Недавно добавленные</option>
-        <option value="title">По алфавиту</option>
-        <option value="year">По году</option>
-      </select>
-    </div>
-    <div class="spacer"></div>
-    <button class="clearf" id="clearF">Сбросить фильтры</button>
-  </div>
-
-  <div class="count">
-    <span id="count"></span>
-    <div class="tools">
-      <button id="exportBtn">↓ Экспорт JSON</button>
-      <button id="importBtn">↑ Импорт JSON</button>
-      <input type="file" id="importFile" accept="application/json,.json" hidden>
-    </div>
-  </div>
-  <div class="grid" id="grid"></div>
-</div>
-
-<!-- modal -->
-<div class="overlay" id="overlay">
-  <div class="modal">
-    <h2 id="modalTitle">Добавить запись</h2>
-    <div class="field">
-      <label>Тип</label>
-      <div class="typetoggle">
-        <button class="pill anime" data-mtype="anime">Аниме</button>
-        <button class="pill film" data-mtype="film">Фильм</button>
+    <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+    <aside class="notification-stack" aria-label="Уведомления">
+      <div
+        id="toasts"
+        class="toasts"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      ></div>
+      <div id="update-banner" class="update-banner" hidden>
+        <span>Доступно обновление Watch Tracker</span>
+        <button id="apply-update" class="button primary" type="button">
+          Обновить
+        </button>
+        <button id="dismiss-update" class="button subtle" type="button">
+          Позже
+        </button>
       </div>
-    </div>
-    <div class="field">
-      <label>Название</label>
-      <input id="mTitle" placeholder="Например, Унесённые призраками">
-    </div>
-    <div class="warn" id="dupWarn">Запись с таким названием уже есть — добавить нельзя.</div>
-    <div class="row2">
-      <div class="field">
-        <label>Год</label>
-        <input id="mYear" type="number" placeholder="2001" min="1900" max="2099">
-      </div>
-      <div class="field">
-        <label>Статус</label>
-        <select id="mStatus">
-          <option value="watched">Просмотрено</option>
-          <option value="watching">Смотрю</option>
-          <option value="plan">В планах</option>
-        </select>
-      </div>
-    </div>
-    <div class="row2" id="seasonRow">
-      <div class="field">
-        <label>Просмотрено сезонов</label>
-        <input id="mSeasonsDone" type="number" placeholder="0" min="0" max="999">
-      </div>
-      <div class="field">
-        <label>Всего сезонов</label>
-        <input id="mSeasonsTotal" type="number" placeholder="напр. 4" min="0" max="999">
-      </div>
-    </div>
-    <div class="field">
-      <label>Жанры (через запятую)</label>
-      <input id="mGenres" placeholder="Драма, Фэнтези, Приключения">
-    </div>
-    <div class="field">
-      <label>Заметка</label>
-      <textarea id="mNote" placeholder="Впечатления, что понравилось…"></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn ghost" id="cancelBtn">Отмена</button>
-      <button class="btn" id="saveBtn">Сохранить</button>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script>
-const KEY_TOKEN='watchlist_token';
-let items=[];
-let editId=null;
-let mType='anime';
-let filters={type:'all',genre:'',status:'',sort:'added',q:''};
-let authToken=localStorage.getItem(KEY_TOKEN)||'';
-
-const $=s=>document.querySelector(s);
-const grid=$('#grid');
-const statusLabel={watched:'Просмотрено',watching:'Смотрю',plan:'В планах'};
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const norm=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
-
-/* ---------- API ---------- */
-async function api(path, opts={}){
-  const headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
-  if(authToken) headers['X-Auth-Token']=authToken;
-  const res = await fetch(path, {...opts, headers});
-  if(res.status===401){
-    toast('Нужен токен доступа');
-    askToken(true);
-    throw new Error('unauthorized');
-  }
-  if(!res.ok){
-    let msg='Ошибка запроса';
-    try{ msg=(await res.json()).detail||msg; }catch(e){}
-    throw new Error(msg);
-  }
-  if(res.status===204) return null;
-  return res.json();
-}
-function askToken(force){
-  if(!force && authToken) return;
-  const t=prompt('Введи токен доступа (задан в переменной APP_TOKEN на сервере):', authToken||'');
-  if(t!==null){
-    authToken=t.trim();
-    localStorage.setItem(KEY_TOKEN, authToken);
-  }
-}
-
-/* ---------- load ---------- */
-async function load(){
-  try{
-    items = await api('/api/items');
-    render();
-  }catch(e){
-    if(e.message!=='unauthorized'){
-      grid.innerHTML=`<div class="empty"><h3>Не удалось загрузить данные</h3><p>${esc(e.message)}</p></div>`;
-    }
-  }
-}
-
-/* ---------- genres ---------- */
-function allGenres(){
-  const map=new Map();
-  items.forEach(i=>i.genres.forEach(g=>{
-    const k=g.trim().toLowerCase();
-    if(!k) return;
-    if(!map.has(k)) map.set(k, g.trim());
-  }));
-  return [...map.values()].sort((a,b)=>a.localeCompare(b,'ru'));
-}
-function refreshGenreFilter(){
-  const sel=$('#fGenre');const cur=sel.value;
-  sel.innerHTML='<option value="">Любой</option>'+allGenres().map(g=>`<option>${esc(g)}</option>`).join('');
-  sel.value=cur;
-}
-
-/* ---------- filtering ---------- */
-function visible(){
-  let list=items.filter(i=>{
-    if(filters.type!=='all'&&i.type!==filters.type)return false;
-    if(filters.genre&&!i.genres.some(g=>g.trim().toLowerCase()===filters.genre.trim().toLowerCase()))return false;
-    if(filters.status&&i.status!==filters.status)return false;
-    if(filters.q){
-      const hay=(i.title+' '+i.genres.join(' ')+' '+(i.note||'')+' '+(i.year||'')).toLowerCase();
-      if(!hay.includes(filters.q.toLowerCase()))return false;
-    }
-    return true;
-  });
-  const s=filters.sort;
-  list.sort((a,b)=>{
-    if(s==='title')return a.title.localeCompare(b.title,'ru');
-    if(s==='year')return (b.year||0)-(a.year||0);
-    return b.added-a.added;
-  });
-  return list;
-}
-
-/* ---------- render ---------- */
-function render(){
-  refreshGenreFilter();
-  renderStats();
-  const list=visible();
-  $('#count').textContent=`Показано ${list.length} из ${items.length}`;
-  if(list.length===0){
-    grid.innerHTML='<div class="empty"><h3>Ничего не найдено</h3><p>Измените фильтры или добавьте новую запись.</p></div>';
-    return;
-  }
-  grid.innerHTML=list.map(card).join('');
-}
-function seasonBar(i){
-  const tot=+i.seasonsTotal||0, d=+i.seasonsDone||0;
-  if(tot<=0 && d<=0) return '';
-  const pct = tot>0 ? Math.min(100, Math.round(d/tot*100)) : (d>0?100:0);
-  const txt = tot>0 ? `${d} из ${tot} сезонов` : `${d} сезон(ов)`;
-  return `<div class="seasons">
-    <div class="slabel"><span>Сезоны</span><b>${txt}${tot>0?` · ${pct}%`:''}</b></div>
-    <div class="sbar"><i style="width:${pct}%"></i></div>
-  </div>`;
-}
-function card(i){
-  return `<div class="card ${i.type}">
-    <span class="type">${i.type==='anime'?'Аниме':'Фильм'}</span>
-    <h3>${esc(i.title)} ${i.year?`<span style="color:var(--muted);font-weight:400;font-size:.85rem">(${i.year})</span>`:''}</h3>
-    <div class="meta">${i.genres.map(g=>`<span class="tag">${esc(g)}</span>`).join('')}</div>
-    ${seasonBar(i)}
-    ${i.note?`<p class="note">${esc(i.note)}</p>`:''}
-    <div class="cbar">
-      <button class="iconbtn" onclick="editItem('${i.id}')">✎ Изменить</button>
-      <button class="iconbtn del" onclick="delItem('${i.id}')">🗑 Удалить</button>
-      <span class="status ${i.status}">${statusLabel[i.status]}</span>
-    </div>
-  </div>`;
-}
-function renderStats(){
-  const anime=items.filter(i=>i.type==='anime').length;
-  const film=items.filter(i=>i.type==='film').length;
-  const watched=items.filter(i=>i.status==='watched').length;
-  const plan=items.filter(i=>i.status==='plan').length;
-  $('#stats').innerHTML=`
-    <div class="stat"><b>${items.length}</b><span>Всего</span></div>
-    <div class="stat"><b style="color:var(--anime)">${anime}</b><span>Аниме</span></div>
-    <div class="stat"><b style="color:var(--film)">${film}</b><span>Фильмов</span></div>
-    <div class="stat"><b>${watched}</b><span>Просмотрено</span></div>
-    <div class="stat"><b style="color:var(--accent2)">${plan}</b><span>В планах</span></div>`;
-}
-
-/* ---------- filters wiring ---------- */
-document.querySelectorAll('.chips .pill').forEach(p=>p.onclick=()=>{
-  document.querySelectorAll('.chips .pill').forEach(x=>x.classList.remove('on'));
-  p.classList.add('on');filters.type=p.dataset.type;render();
-});
-$('#q').oninput=e=>{filters.q=e.target.value;render();};
-$('#fGenre').onchange=e=>{filters.genre=e.target.value;render();};
-$('#fStatus').onchange=e=>{filters.status=e.target.value;render();};
-$('#fSort').onchange=e=>{filters.sort=e.target.value;render();};
-$('#clearF').onclick=()=>{
-  filters={type:'all',genre:'',status:'',sort:'added',q:''};
-  $('#q').value='';$('#fGenre').value='';$('#fStatus').value='';$('#fSort').value='added';
-  document.querySelectorAll('.chips .pill').forEach(x=>x.classList.remove('on'));
-  document.querySelector('.chips .pill[data-type="all"]').classList.add('on');
-  render();
-};
-
-/* ---------- modal ---------- */
-function openModal(item){
-  editId=item?item.id:null;
-  $('#modalTitle').textContent=item?'Изменить запись':'Добавить запись';
-  mType=item?item.type:'anime';
-  $('#mTitle').value=item?item.title:'';
-  $('#mYear').value=item&&item.year?item.year:'';
-  $('#mStatus').value=item?item.status:'watched';
-  $('#mGenres').value=item?item.genres.join(', '):'';
-  $('#mSeasonsDone').value=item&&item.seasonsDone?item.seasonsDone:'';
-  $('#mSeasonsTotal').value=item&&item.seasonsTotal?item.seasonsTotal:'';
-  $('#mNote').value=item?item.note||'':'';
-  $('#dupWarn').style.display='none';
-  paintType();toggleSeasonRow();
-  $('#overlay').classList.add('show');
-  setTimeout(()=>$('#mTitle').focus(),50);
-}
-function closeModal(){$('#overlay').classList.remove('show');}
-function paintType(){
-  document.querySelectorAll('[data-mtype]').forEach(b=>b.classList.toggle('on',b.dataset.mtype===mType));
-}
-function toggleSeasonRow(){
-  $('#seasonRow').style.display = mType==='film' ? 'none' : 'grid';
-}
-document.querySelectorAll('[data-mtype]').forEach(b=>b.onclick=()=>{mType=b.dataset.mtype;paintType();toggleSeasonRow();checkDup();});
-$('#addBtn').onclick=()=>openModal(null);
-$('#cancelBtn').onclick=closeModal;
-$('#overlay').onclick=e=>{if(e.target.id==='overlay')closeModal();};
-
-window.editItem=id=>openModal(items.find(i=>i.id===id));
-window.delItem=async id=>{
-  if(!confirm('Удалить эту запись?'))return;
-  try{
-    await api(`/api/items/${id}`, {method:'DELETE'});
-    items=items.filter(i=>i.id!==id);
-    render();toast('Удалено');
-  }catch(e){ toast(e.message); }
-};
-
-/* ---------- duplicate detection (client-side hint only, только по названию, без учёта регистра) ---------- */
-function findDup(title){
-  const nt=norm(title);
-  return items.find(i=>i.id!==editId && norm(i.title)===nt);
-}
-function checkDup(){
-  const title=$('#mTitle').value.trim();
-  const dup=title?findDup(title):null;
-  $('#dupWarn').style.display=dup?'block':'none';
-}
-$('#mTitle').oninput=checkDup;
-$('#mYear').oninput=checkDup;
-
-/* ---------- save (create/update via API) ---------- */
-$('#saveBtn').onclick=async()=>{
-  const title=$('#mTitle').value.trim();
-  if(!title){$('#mTitle').focus();$('#mTitle').style.borderColor='var(--accent)';return;}
-  const year=+$('#mYear').value||null;
-
-  const dup=findDup(title);
-  if(dup){
-    $('#dupWarn').style.display='block';
-    $('#mTitle').focus();
-    toast(`«${dup.title}» уже есть в коллекции`);
-    return;
-  }
-
-  const data={
-    type:mType,title,year,
-    status:$('#mStatus').value,
-    genres:$('#mGenres').value.split(',').map(g=>g.trim()).filter(Boolean),
-    seasonsDone: mType==='film' ? 0 : (+$('#mSeasonsDone').value||0),
-    seasonsTotal: mType==='film' ? 0 : (+$('#mSeasonsTotal').value||0),
-    note:$('#mNote').value.trim(),
-  };
-  try{
-    if(editId){
-      const updated=await api(`/api/items/${editId}`, {method:'PUT', body:JSON.stringify(data)});
-      const idx=items.findIndex(i=>i.id===editId);
-      items[idx]=updated;
-      toast('Обновлено');
-    }else{
-      const created=await api('/api/items', {method:'POST', body:JSON.stringify(data)});
-      items.unshift(created);
-      toast('Добавлено');
-    }
-    closeModal();render();
-  }catch(e){
-    toast(e.message);
-  }
-};
-
-/* ---------- export / import ---------- */
-$('#exportBtn').onclick=()=>{
-  const blob=new Blob([JSON.stringify(items,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;a.download='watchlist.json';a.click();
-  URL.revokeObjectURL(url);
-  toast('Коллекция экспортирована');
-};
-$('#importBtn').onclick=()=>$('#importFile').click();
-$('#importFile').onchange=e=>{
-  const file=e.target.files[0];if(!file)return;
-  const reader=new FileReader();
-  reader.onload=async()=>{
-    try{
-      const data=JSON.parse(reader.result);
-      if(!Array.isArray(data))throw new Error('bad json');
-      const mode=confirm('OK — объединить с текущей коллекцией (без дублей).\nОтмена — заменить всё импортированным.')?'merge':'replace';
-      if(mode==='replace' && !confirm('Точно заменить ВСЮ коллекцию на сервере? Это необратимо.')){
-        e.target.value='';return;
-      }
-      const res=await api('/api/items/bulk-import', {method:'POST', body:JSON.stringify({mode, items:data})});
-      toast(mode==='merge'?`Добавлено новых: ${res.added}`:`Коллекция заменена, добавлено: ${res.added}`);
-      await load();
-    }catch(err){ toast('Ошибка: '+(err.message||'неверный JSON-файл')); }
-    e.target.value='';
-  };
-  reader.readAsText(file);
-};
-
-/* ---------- toast ---------- */
-let toastTimer;
-function toast(msg){
-  const t=$('#toast');t.textContent=msg;t.classList.add('show');
-  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
-}
-
-askToken(false);
-load();
-
-</script>
-</body>
+    </aside>
+  </body>
 </html>
