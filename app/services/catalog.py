@@ -16,6 +16,7 @@ from app.schemas import ItemInput, Related
 logger = logging.getLogger(__name__)
 
 ANILIST = "https://graphql.anilist.co"
+SHIKIMORI = "https://shikimori.io"
 TMDB = "https://api.themoviedb.org/3"
 ANIME_FIELDS = """
 id title { romaji english native } synonyms startDate { year month day }
@@ -148,6 +149,53 @@ def anime_record(raw):
     )
 
 
+def shikimori_record(raw):
+    original = title_string(raw.get("name"))
+    start = raw.get("aired_on")
+    try:
+        release = date.fromisoformat(start) if isinstance(start, str) else None
+    except ValueError:
+        release = None
+    image = optional_object(raw.get("image")).get("original")
+    poster = (
+        SHIKIMORI + image
+        if isinstance(image, str) and re.fullmatch(r"/system/animes/[\w./?-]+", image)
+        else None
+    )
+    try:
+        score = float(raw.get("score"))
+    except (TypeError, ValueError):
+        score = 0
+    return ItemInput.model_validate(
+        {
+            "type": "anime",
+            "title": title_string(raw.get("russian")) or original,
+            "year": release.year if release else None,
+            "episodesTotal": bounded_int(raw.get("episodes"), 1, 100_000) or 0,
+            "genres": [
+                title
+                for genre in optional_list(raw.get("genres"))[:40]
+                if (title := title_string(optional_object(genre).get("russian")))
+            ],
+            "metadata": {
+                "provider": "shikimori",
+                "externalId": raw["id"],
+                "originalTitle": original,
+                "alternateTitles": alternatives(
+                    [raw.get("english"), raw.get("japanese"), *optional_list(raw.get("synonyms"))]
+                ),
+                "poster": poster,
+                "description": plain(raw.get("description")),
+                "releaseDate": release.isoformat() if release else None,
+                "releaseStatus": title_string(raw.get("status")),
+                "runtime": bounded_int(raw.get("duration"), 1, 3000),
+                "communityRating": score if 0 < score <= 10 else None,
+                "fetchedAt": time.time_ns() // 1_000_000,
+            },
+        }
+    )
+
+
 def tmdb_image(path, size, config):
     if not isinstance(path, str) or not re.fullmatch(r"/[a-zA-Z0-9_-]+\.(jpg|png|webp)", path):
         return None
@@ -238,7 +286,11 @@ class Catalog:
         self.cooldowns = {}
 
     def enabled(self):
-        return {"anilist": self.settings.anilist, "tmdb": bool(self.settings.tmdb_token)}
+        return {
+            "anilist": self.settings.anilist,
+            "tmdb": bool(self.settings.tmdb_token),
+            "shikimori": self.settings.shikimori,
+        }
 
     async def fetch(self, provider, method, url, ttl=900, **options):
         key = (provider, url, repr(sorted(options.items())))
@@ -259,6 +311,8 @@ class Catalog:
             headers = (
                 {"Authorization": f"Bearer {self.settings.tmdb_token}"}
                 if provider == "tmdb"
+                else {"User-Agent": "Watch Tracker (watch-tracker-app)"}
+                if provider == "shikimori"
                 else {}
             )
             for attempt in range(2):
@@ -288,7 +342,12 @@ class Catalog:
                             reason += f" [{anilist_error_format(response)}]"
                         break
                     data = response.json()
-                    if not isinstance(data, dict) or data.get("errors"):
+                    if not (
+                        isinstance(data, list)
+                        and provider == "shikimori"
+                        or isinstance(data, dict)
+                        and not data.get("errors")
+                    ):
                         reason = "unexpected payload or provider errors"
                         break
                     self.cache[key] = (time.monotonic() + ttl, data)
@@ -329,6 +388,18 @@ class Catalog:
                 if not row:
                     raise HTTPException(404, "Произведение не найдено в каталоге")
                 return anime_record(row)
+            if provider == "shikimori":
+                base = SHIKIMORI + "/api/animes"
+                if query is not None:
+                    rows = await self.fetch(
+                        provider,
+                        "GET",
+                        base,
+                        params={"search": query, "limit": 12, "censored": "true"},
+                    )
+                    return self.parse_search(rows, shikimori_record)
+                row = await self.fetch(provider, "GET", f"{base}/{catalog_id}")
+                return shikimori_record(row)
             config = await self.fetch(provider, "GET", TMDB + "/configuration", ttl=86400)
             if query is not None:
                 result = await self.fetch(

@@ -7,7 +7,11 @@ export const statuses = {
   dropped: "Брошено",
   rewatching: "Пересматриваю",
 };
-export const sources = { anilist: "AniList", tmdb: "TMDB" };
+export const sources = {
+  shikimori: "Шикимори",
+  anilist: "AniList",
+  tmdb: "TMDB",
+};
 const options = {
   side: ["open", "collapsed"],
   accent: ["purple", "blue", "rose"],

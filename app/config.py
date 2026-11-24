@@ -34,6 +34,7 @@ class Settings:
     tmdb_token: str = ""
     backup_retention_days: int = 30
     backup_max_automatic_count: int = 20
+    shikimori: bool = False
 
     @classmethod
     def from_env(cls):
@@ -45,6 +46,7 @@ class Settings:
             disable_auth=os.getenv("APP_DISABLE_AUTH") == "1",
             origin=os.getenv("APP_ORIGIN", "").rstrip("/"),
             anilist=os.getenv("ANILIST_ENABLED") == "1",
+            shikimori=os.getenv("SHIKIMORI_ENABLED") == "1",
             tmdb_token=os.getenv("TMDB_READ_TOKEN", ""),
             backup_retention_days=int(os.getenv("BACKUP_RETENTION_DAYS", "30")),
             backup_max_automatic_count=int(os.getenv("BACKUP_MAX_AUTOMATIC_COUNT", "20")),

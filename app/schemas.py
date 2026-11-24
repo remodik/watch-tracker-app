@@ -16,7 +16,7 @@ from app.viewing_time import today
 
 Kind = Literal["anime", "film"]
 Status = Literal["plan", "watching", "watched", "paused", "dropped", "rewatching"]
-Provider = Literal["anilist", "tmdb"]
+Provider = Literal["anilist", "tmdb", "shikimori"]
 ImportMode = Literal["merge", "update", "replace"]
 Sort = Literal["title", "added", "updated", "year", "rating", "progress"]
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
@@ -198,7 +198,7 @@ class ItemInput(Input):
         if self.started and self.completed and self.started > self.completed:
             raise ValueError("Дата начала позже даты завершения")
         if self.metadata.provider and (self.type == "anime") != (
-            self.metadata.provider == "anilist"
+            self.metadata.provider in {"anilist", "shikimori"}
         ):
             raise ValueError("Каталог не соответствует типу произведения")
         numbers = {season.number for season in self.seasons}

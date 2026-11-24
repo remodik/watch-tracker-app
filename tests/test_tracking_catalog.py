@@ -77,7 +77,11 @@ def test_tracking_transitions_individual_episodes_and_statistics(authorized):
 
 
 def test_optional_providers_do_not_block_collection(authorized):
-    assert authorized.get("/api/catalog/status").json() == {"anilist": False, "tmdb": False}
+    assert authorized.get("/api/catalog/status").json() == {
+        "anilist": False,
+        "tmdb": False,
+        "shikimori": False,
+    }
     for provider in ("anilist", "tmdb"):
         assert (
             authorized.get(f"/api/catalog/{provider}/search", params={"q": "кино"}).status_code
@@ -431,3 +435,56 @@ def test_anilist_http_error_logs_only_response_format(db_url, caplog, media_type
     ]
     assert messages == [f"Catalog request failed (anilist): upstream HTTP 400 [{expected}]"]
     assert "private-marker" not in response.text
+
+
+def test_shikimori_and_regional_watch_availability(db_url):
+    anime = {
+        "id": 39535,
+        "name": "Mushoku Tensei",
+        "russian": "Реинкарнация безработного",
+        "aired_on": "2021-01-11",
+        "episodes": 11,
+        "image": {"original": "/system/animes/original/39535.jpg?1711965119"},
+    }
+
+    def serve(request):
+        if request.url.host == "shikimori.io":
+            assert "Authorization" not in request.headers
+            if request.url.path == "/api/animes":
+                assert request.url.params["search"] == "Реинкарнация"
+                return httpx.Response(200, json=[anime])
+            assert request.url.path == "/api/animes/39535"
+            return httpx.Response(200, json={**anime, "description": "Описание"})
+        assert request.headers["Authorization"] == "Bearer private-read-token"
+        if request.url.path == "/3/search/tv":
+            return httpx.Response(200, json={"results": [{"id": 9, "name": "Mushoku Tensei"}]})
+        assert request.url.path == "/3/tv/9/watch/providers"
+        return httpx.Response(
+            200, json={"results": {"RU": {"flatrate": [{"provider_name": "Пример"}]}}}
+        )
+
+    settings = Settings(
+        db_url,
+        environment="local",
+        token="тестовый-ключ",
+        shikimori=True,
+        tmdb_token="private-read-token",
+    )
+    with TestClient(create_app(settings)) as client:
+        with client.portal.wrap_async_context_manager(
+            httpx.AsyncClient(transport=httpx.MockTransport(serve))
+        ) as mock:
+            client.app.state.catalog.client = mock
+            login(client)
+            results = client.get("/api/catalog/shikimori/search", params={"q": "Реинкарнация"})
+            assert results.json()[0]["title"] == anime["russian"]
+            result = client.get("/api/catalog/shikimori/39535").json()
+            assert result["metadata"]["externalId"] == 39535
+            assert result["metadata"]["description"] == "Описание"
+            assert client.post("/api/items", json=result).status_code in {200, 201}
+            matches = client.get("/api/catalog/watch/search", params={"kind": "tv", "q": "Mushoku"})
+            assert matches.json()[0]["id"] == 9
+            path = "/api/catalog/watch/tv/9"
+            assert client.get(path, params={"region": "RU"}).json()["flatrate"] == ["Пример"]
+            assert client.get(path, params={"region": "DE"}).json()["flatrate"] == []
+            assert client.get(path, params={"region": "invalid"}).status_code == 422
