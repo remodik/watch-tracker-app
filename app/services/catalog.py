@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 import time
 from collections import OrderedDict
@@ -11,6 +12,8 @@ from pydantic import ValidationError
 
 from app.identity import normalize
 from app.schemas import ItemInput, Related
+
+logger = logging.getLogger(__name__)
 
 ANILIST = "https://graphql.anilist.co"
 TMDB = "https://api.themoviedb.org/3"
@@ -245,21 +248,27 @@ class Catalog:
                         await asyncio.sleep(0.15)
                         continue
                     if not response.is_success:
+                        reason = f"upstream HTTP {response.status_code}"
                         break
                     data = response.json()
                     if not isinstance(data, dict) or data.get("errors"):
+                        reason = "unexpected payload or provider errors"
                         break
                     self.cache[key] = (time.monotonic() + ttl, data)
                     self.cache.move_to_end(key)
                     while len(self.cache) > 128:
                         self.cache.popitem(last=False)
                     return data
-                except httpx.TransportError:
+                except httpx.TransportError as exc:
                     if attempt == 0:
                         await asyncio.sleep(0.15)
                         continue
-                except ValueError:
+                    reason = type(exc).__name__
                     break
+                except ValueError:
+                    reason = "invalid JSON"
+                    break
+        logger.warning("Catalog request failed (%s): %s", provider, reason)
         raise HTTPException(502, "Каталог временно недоступен")
 
     async def lookup(self, provider, query=None, catalog_id=None):

@@ -87,7 +87,7 @@ def test_optional_providers_do_not_block_collection(authorized):
     assert authorized.get("/api/calendar").json() == []
 
 
-def test_catalog_search_refresh_cache_retries_and_airing(db_url):
+def test_catalog_search_refresh_cache_retries_and_airing(db_url, caplog):
     calls = []
     lock = Lock()
     tmdb_failures = 0
@@ -184,6 +184,11 @@ def test_catalog_search_refresh_cache_retries_and_airing(db_url):
             assert film.json()["metadata"]["poster"] == "https://image.tmdb.org/t/p/w342/poster.png"
             assert "private-read-token" not in film.text
             assert client.get("/api/catalog/tmdb/search", params={"q": "кино"}).status_code == 502
+            messages = [record.getMessage() for record in caplog.records]
+            assert (
+                "Catalog request failed (tmdb): unexpected payload or provider errors" in messages
+            )
+            assert all("private-read-token" not in message for message in messages)
             item = create(
                 client,
                 "Моё название",
