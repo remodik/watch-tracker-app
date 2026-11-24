@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     StringConstraints,
@@ -17,7 +18,19 @@ Provider = Literal["anilist", "tmdb"]
 ImportMode = Literal["merge", "update", "replace"]
 Sort = Literal["title", "added", "updated", "year", "rating", "progress"]
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
-Genre = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+def clean_genre(value):
+    if isinstance(value, str) and any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in value):
+        raise ValueError("Недопустимый символ в жанре")
+    return value
+
+
+Genre = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=80),
+    BeforeValidator(clean_genre),
+]
 EpisodeCount = Annotated[int, Field(ge=0, le=100_000)]
 SeasonCount = Annotated[int, Field(ge=0, le=999)]
 PositiveSeason = Annotated[int, Field(ge=1, le=999)]

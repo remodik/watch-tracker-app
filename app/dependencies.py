@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import re
 import secrets
 import time
 
@@ -21,7 +22,11 @@ def cookie_digest(settings, token):
 
 def session_digest(request):
     token = request.cookies.get(request.app.state.settings.cookie_name, "")
-    return cookie_digest(request.app.state.settings, token) if len(token) == 43 else ""
+    return (
+        cookie_digest(request.app.state.settings, token)
+        if re.fullmatch(r"[A-Za-z0-9_-]{43}", token)
+        else ""
+    )
 
 
 def csrf_token(request):
@@ -46,13 +51,20 @@ def check_origin(request):
 def require_user(request: Request):
     from app.models import AuthSession
 
+    if getattr(request.state, "authenticated", False):
+        return
     if not request.app.state.settings.disable_auth:
+        credential = session_digest(request)
+        if not credential:
+            raise HTTPException(401, "Войдите в Watch Tracker")
         with request.app.state.sessions() as db:
-            login = db.get(AuthSession, session_digest(request))
+            login = db.get(AuthSession, credential)
             if login is None or login.expires <= int(time.time()):
                 raise HTTPException(401, "Войдите в Watch Tracker")
+            request.state.session_expires = login.expires
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         check_origin(request)
         candidate = request.headers.get("x-csrf-token", "")
         if not secrets.compare_digest(candidate.encode(), csrf_token(request).encode()):
             raise HTTPException(403, "Запрос не подтверждён. Обновите страницу.")
+    request.state.authenticated = True

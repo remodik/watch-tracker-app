@@ -56,7 +56,9 @@ class Settings:
             raise RuntimeError("APP_DISABLE_AUTH is restricted to APP_ENV=local")
         if not self.disable_auth and not self.token.strip():
             raise RuntimeError("APP_TOKEN is required")
-        if len(self.token) > 1024:
+        if any(ord(c) < 32 or ord(c) == 127 or 0xD800 <= ord(c) <= 0xDFFF for c in self.token):
+            raise RuntimeError("APP_TOKEN contains an unsupported character")
+        if len(self.token) > 1024 or len(self.token.encode()) > 4000:
             raise RuntimeError("APP_TOKEN exceeds the supported length")
         if self.origin:
             origin = urlsplit(self.origin)

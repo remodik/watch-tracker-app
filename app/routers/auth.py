@@ -32,16 +32,22 @@ def login(payload: Login, request: Request, response: Response, db: Session = De
         return {"ok": True}
     now = int(time.time())
     client = digest(request.client.host if request.client else "unknown")
-    db.execute(update(LoginLock).where(LoginLock.id == 1).values(id=1))
+    if db.execute(update(LoginLock).where(LoginLock.id == 1).values(id=1)).rowcount != 1:
+        raise HTTPException(503, "Блокировка входа недоступна")
     db.execute(delete(LoginFailure).where(LoginFailure.at <= now - WINDOW_SECONDS))
-    count = select(func.count()).select_from(LoginFailure)
-    if db.scalar(count) >= 40 or db.scalar(count.where(LoginFailure.client == client)) >= 8:
-        raise HTTPException(
-            429,
-            "Слишком много попыток. Повторите позже.",
-            headers={"Retry-After": str(WINDOW_SECONDS)},
+    valid = secrets.compare_digest(payload.token.encode(), settings.token.encode())
+    if not valid:
+        stats = select(func.count(), func.min(LoginFailure.at)).select_from(LoginFailure)
+        total, first = db.execute(stats).one()
+        attempts, first_client = db.execute(stats.where(LoginFailure.client == client)).one()
+        retry = max(
+            first + WINDOW_SECONDS - now if total >= 40 else 0,
+            first_client + WINDOW_SECONDS - now if attempts >= 8 else 0,
         )
-    if not secrets.compare_digest(payload.token.encode(), settings.token.encode()):
+        if retry:
+            raise HTTPException(
+                429, "Слишком много попыток. Повторите позже.", headers={"Retry-After": str(retry)}
+            )
         db.add(LoginFailure(client=client, at=now))
         db.commit()
         raise HTTPException(401, "Неверный ключ доступа")
@@ -65,13 +71,12 @@ def login(payload: Login, request: Request, response: Response, db: Session = De
 
 
 @router.get("/session", dependencies=[Depends(require_user)])
-def session(request: Request, db: Session = Depends(get_db)):
+def session(request: Request):
     settings = request.app.state.settings
-    row = db.get(AuthSession, session_digest(request)) if not settings.disable_auth else None
     return {
         "csrf": csrf_token(request),
         "local": settings.disable_auth,
-        "expires": row.expires if row else None,
+        "expires": getattr(request.state, "session_expires", None),
     }
 
 
@@ -88,7 +93,8 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 
 @router.post("/logout-all", dependencies=[Depends(require_user)])
 def logout_all(request: Request, response: Response, db: Session = Depends(get_db)):
-    db.execute(update(LoginLock).where(LoginLock.id == 1).values(id=1))
+    if db.execute(update(LoginLock).where(LoginLock.id == 1).values(id=1)).rowcount != 1:
+        raise HTTPException(503, "Блокировка входа недоступна")
     db.execute(delete(AuthSession))
     db.commit()
     settings = request.app.state.settings

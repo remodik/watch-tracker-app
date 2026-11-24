@@ -51,9 +51,12 @@ def test_throttle_and_redaction(client):
             == 401
         )
     throttled = client.post(
-        "/api/auth/login", headers={"X-Watch-Login": "1"}, json={"token": "тестовый-ключ"}
+        "/api/auth/login", headers={"X-Watch-Login": "1"}, json={"token": "wrong-token"}
     )
     assert throttled.status_code == 429 and throttled.headers["Retry-After"]
+    assert client.post(
+        "/api/auth/login", headers={"X-Watch-Login": "1"}, json={"token": "тестовый-ключ"}
+    ).is_success
     invalid = client.post("/api/auth/login", json={"token": ["sentinel-secret"]})
     assert invalid.status_code == 422 and "sentinel-secret" not in invalid.text
     assert client.post("/api/auth/login", content=b"x" * 4097).status_code == 413
@@ -73,3 +76,27 @@ def test_production_cookie_and_revoke_all(db_url):
         assert client.post("/api/auth/logout-all", headers={"X-CSRF-Token": csrf}).is_success
         client.cookies.set("__Host-watch_session", first)
         assert client.get("/api/items").status_code == 401
+
+
+def test_unauthorized_import_does_not_read_asgi_body(client):
+    from starlette.requests import Request
+
+    async def send(message):
+        messages.append(message)
+
+    async def receive():
+        raise AssertionError("Unauthorized request body was read")
+
+    messages = []
+    scope = {
+        "type": "http",
+        "app": client.app,
+        "method": "POST",
+        "path": "/api/items/bulk-import",
+        "headers": [],
+        "state": {},
+    }
+    assert Request(scope).method == "POST"
+    client.portal.call(client.app, scope, receive, send)
+    assert messages[0]["status"] == 401
+    assert b"content-security-policy" in dict(messages[0]["headers"])
