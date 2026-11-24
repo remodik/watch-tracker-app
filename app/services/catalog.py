@@ -194,6 +194,20 @@ def film_record(raw, config):
     )
 
 
+def anilist_error_format(response):
+    media_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type in {"text/html", "application/xhtml+xml"}:
+        return "HTML"
+    if media_type not in {"application/json", "application/graphql-response+json"}:
+        return "other format"
+    try:
+        data = response.json()
+    except ValueError:
+        return "invalid JSON"
+    errors = optional_object(data).get("errors")
+    return "GraphQL errors" if isinstance(errors, list) and errors else "JSON"
+
+
 class Catalog:
     def __init__(self, client, settings):
         self.client = client
@@ -249,6 +263,8 @@ class Catalog:
                         continue
                     if not response.is_success:
                         reason = f"upstream HTTP {response.status_code}"
+                        if provider == "anilist":
+                            reason += f" [{anilist_error_format(response)}]"
                         break
                     data = response.json()
                     if not isinstance(data, dict) or data.get("errors"):

@@ -372,3 +372,38 @@ def test_status_transition_matrix(previous, target):
     assert item.tracking.get("rewatchInProgress") == (
         target == "rewatching" or (pending and target in {"watching", "paused"})
     )
+
+
+@pytest.mark.parametrize(
+    ("media_type", "body", "expected"),
+    [
+        (
+            "application/graphql-response+json",
+            '{"errors":[{"message":"private-marker"}]}',
+            "GraphQL errors",
+        ),
+        ("text/html; charset=UTF-8", "<html>private-marker</html>", "HTML"),
+        ("application/json", '{"message":"private-marker"}', "JSON"),
+        ("application/json", "private-marker", "invalid JSON"),
+        ("text/plain", "private-marker", "other format"),
+    ],
+)
+def test_anilist_http_error_logs_only_response_format(db_url, caplog, media_type, body, expected):
+    app = create_app(Settings(db_url, environment="local", token="тестовый-ключ", anilist=True))
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(400, headers={"Content-Type": media_type}, text=body)
+    )
+    with TestClient(app) as client:
+        with client.portal.wrap_async_context_manager(
+            httpx.AsyncClient(transport=transport)
+        ) as mock:
+            app.state.catalog.client = mock
+            login(client)
+            response = client.get("/api/catalog/anilist/search", params={"q": "private-marker"})
+
+    assert response.status_code == 502
+    messages = [
+        record.getMessage() for record in caplog.records if record.name == "app.services.catalog"
+    ]
+    assert messages == [f"Catalog request failed (anilist): upstream HTTP 400 [{expected}]"]
+    assert "private-marker" not in response.text
