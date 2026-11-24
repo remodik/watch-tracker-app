@@ -1,3 +1,4 @@
+import hashlib
 import json
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -34,15 +35,26 @@ def export_library(db):
     }
 
 
+def backup_bytes(archive):
+    return json.dumps(archive, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+
+
 def create_backup(db, reason):
     archive = export_library(db)
-    size = len(json.dumps(archive, ensure_ascii=False, separators=(",", ":")).encode())
-    backup = Backup(id=uuid(), created=now_ms(), reason=reason, archive=archive, size_bytes=size)
+    encoded = backup_bytes(archive)
+    backup = Backup(
+        id=uuid(),
+        created=now_ms(),
+        reason=reason,
+        archive=archive,
+        size_bytes=len(encoded),
+        checksum=hashlib.sha256(encoded).hexdigest(),
+    )
     db.add(backup)
     return backup
 
 
-def prune_automatic_backups(db):
+def prune_automatic_backups(db, latest):
     settings = db.info.get("settings")
     days = settings.backup_retention_days if settings else 30
     limit = settings.backup_max_automatic_count if settings else 20
@@ -50,13 +62,13 @@ def prune_automatic_backups(db):
     db.flush()
     ordered = (
         select(Backup.id, Backup.created)
-        .where(Backup.reason != "manual")
+        .where((Backup.reason != "manual") & (Backup.id != latest.id))
         .order_by(Backup.created.desc(), Backup.id.desc())
     )
     obsolete = [
         backup_id
         for index, (backup_id, created) in enumerate(db.execute(ordered))
-        if index and (index >= limit or created < cutoff)
+        if index >= limit - 1 or created < cutoff
     ]
     for start in range(0, len(obsolete), 500):
         db.execute(delete(Backup).where(Backup.id.in_(obsolete[start : start + 500])))
@@ -313,6 +325,6 @@ def apply_import(db, payload, plan, backup_reason=None):
     db.flush()
     db.add_all(plan.events)
     if backup:
-        prune_automatic_backups(db)
+        prune_automatic_backups(db, backup)
     db.commit()
     return {**plan.summary(), "backupId": backup.id if backup else None}

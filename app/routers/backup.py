@@ -1,3 +1,4 @@
+import hashlib
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,7 +12,13 @@ from app.dependencies import get_db, require_user
 from app.identity import fingerprint
 from app.models import Backup, LibraryLock
 from app.schemas import ArchiveRequest, BackupRestore, Identifier, ImportRequest
-from app.services.import_export import apply_import, create_backup, export_library, plan_import
+from app.services.import_export import (
+    apply_import,
+    backup_bytes,
+    create_backup,
+    export_library,
+    plan_import,
+)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 DB = Annotated[Session, Depends(get_db)]
@@ -79,6 +86,8 @@ def stored_archive(db, id):
         raise HTTPException(404, "Резервная копия отсутствует")
     try:
         archive = backup.archive
+        if hashlib.sha256(backup_bytes(archive)).hexdigest() != backup.checksum:
+            raise HTTPException(422, "Контрольная сумма резервной копии не совпадает")
         return ArchiveRequest.model_validate(
             {
                 "mode": "replace",

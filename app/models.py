@@ -52,6 +52,7 @@ class Backup(Base):
     reason: Mapped[str] = mapped_column(String(20))
     archive: Mapped[dict] = mapped_column(JSON)
     size_bytes: Mapped[int] = mapped_column(BigInteger)
+    checksum: Mapped[str] = mapped_column(String(64))
 
 
 class LibraryLock(Base):

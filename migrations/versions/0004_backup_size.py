@@ -1,5 +1,6 @@
 """Store the logical JSON size of each backup."""
 
+import hashlib
 import json
 
 import sqlalchemy as sa
@@ -13,8 +14,15 @@ def upgrade():
     op.add_column(
         "backups", sa.Column("size_bytes", sa.BigInteger, nullable=False, server_default="0")
     )
+    op.add_column(
+        "backups", sa.Column("checksum", sa.String(64), nullable=False, server_default="")
+    )
     table = sa.table(
-        "backups", sa.column("id"), sa.column("archive", sa.JSON), sa.column("size_bytes")
+        "backups",
+        sa.column("id"),
+        sa.column("archive", sa.JSON),
+        sa.column("size_bytes"),
+        sa.column("checksum"),
     )
     connection = op.get_bind()
     last = ""
@@ -25,10 +33,17 @@ def upgrade():
         .limit(20)
     ).all():
         for row in batch:
-            size = len(json.dumps(row.archive, ensure_ascii=False, separators=(",", ":")).encode())
-            connection.execute(table.update().where(table.c.id == row.id).values(size_bytes=size))
+            encoded = json.dumps(
+                row.archive, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+            ).encode()
+            connection.execute(
+                table.update()
+                .where(table.c.id == row.id)
+                .values(size_bytes=len(encoded), checksum=hashlib.sha256(encoded).hexdigest())
+            )
         last = batch[-1].id
 
 
 def downgrade():
+    op.drop_column("backups", "checksum")
     op.drop_column("backups", "size_bytes")

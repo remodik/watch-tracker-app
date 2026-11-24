@@ -280,3 +280,25 @@ def test_server_restore_rejects_stale_preview_and_preserves_event_ids(authorized
     assert restored["events"] == archive["events"]
     assert authorized.get("/api/backups").json()["total_bytes"] > 0
     assert authorized.delete(path).is_success
+
+
+def test_backup_retention_keeps_manual_and_latest_and_detects_corruption(authorized, db_url):
+    from dataclasses import replace
+
+    app = authorized.app
+    app.state.sessions.configure(
+        info={"settings": replace(app.state.settings, backup_max_automatic_count=1)}
+    )
+    manual = authorized.post("/api/backups").json()["id"]
+    first = create(authorized, "First removal")
+    second = create(authorized, "Second removal")
+    assert authorized.delete("/api/items/detail", params={"id": first["id"]}).is_success
+    removed = authorized.delete("/api/items/detail", params={"id": second["id"]}).json()
+    listed = authorized.get("/api/backups").json()["items"]
+    assert {row["id"] for row in listed} == {manual, removed["backupId"]}
+    engine = make_engine(db_url)
+    with engine.begin() as db:
+        db.execute(text("UPDATE backups SET archive = '{}' WHERE id = :id"), {"id": manual})
+    engine.dispose()
+    assert authorized.get(f"/api/backups/{manual}/restore-preview").status_code == 422
+    assert not library(authorized)

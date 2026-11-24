@@ -93,8 +93,8 @@ def update(
     if match:
         raise HTTPException(409, {"message": "Произведение уже в коллекции", "id": match.id})
     if item.type != payload.type and confirm_type_change:
-        create_backup(db, "type-change")
-        prune_automatic_backups(db)
+        copy = create_backup(db, "type-change")
+        prune_automatic_backups(db, copy)
     update_item(db, item, payload, confirm_type_change)
     db.commit()
     return item_response(item)
@@ -106,7 +106,7 @@ def remove(id: Identifier, db: DB):
     item = get_item(db, id)
     backup = create_backup(db, "delete")
     db.delete(item)
-    prune_automatic_backups(db)
+    prune_automatic_backups(db, backup)
     db.commit()
     return {"ok": True, "backupId": backup.id}
 
