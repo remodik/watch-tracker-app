@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
@@ -9,7 +11,7 @@ from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import exc
 
@@ -24,7 +26,31 @@ STATIC = Path(__file__).resolve().parents[1] / "static"
 logger = logging.getLogger(__name__)
 
 
-def create_app(settings=None):
+def static_release(static_dir):
+    paths = sorted(path for path in static_dir.rglob("*") if path.is_file())
+    digest = hashlib.sha256()
+    for path in paths:
+        digest.update(path.relative_to(static_dir).as_posix().encode() + b"\0")
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    version = digest.hexdigest()[:24]
+    prefix = f"/assets/{version}/"
+    assets = [
+        prefix + path.relative_to(static_dir).as_posix()
+        for path in paths
+        if path.suffix.lower() in {".css", ".js", ".svg", ".png", ".webp", ".woff2"}
+        and path.name != "sw.js"
+    ]
+    assets.append(prefix + "offline.html")
+    worker = (static_dir / "sw.js").read_text().replace("__WATCH_RELEASE__", version)
+    worker = worker.replace("/* RELEASE_ASSETS */ []", json.dumps(assets))
+    return prefix, worker
+
+
+def versioned_html(static_dir, name, prefix):
+    return (static_dir / name).read_text().replace('"/assets/', f'"{prefix}')
+
+
+def create_app(settings=None, *, static_dir=STATIC):
     settings = settings or Settings.from_env()
 
     @asynccontextmanager
@@ -93,7 +119,18 @@ def create_app(settings=None):
     application.include_router(items.router)
     application.include_router(catalog.router)
     application.include_router(statistics.router)
-    application.mount("/assets", StaticFiles(directory=STATIC, html=False), name="assets")
+    prefix, release_worker = static_release(static_dir)
+    index_html = versioned_html(static_dir, "index.html", prefix)
+    offline_html = versioned_html(static_dir, "offline.html", prefix)
+
+    @application.get(prefix + "offline.html")
+    def offline():
+        return HTMLResponse(offline_html)
+
+    application.mount(
+        prefix.rstrip("/"), StaticFiles(directory=static_dir, html=False), name="release-assets"
+    )
+    application.mount("/assets", StaticFiles(directory=static_dir, html=False), name="assets")
 
     @application.get("/api/health")
     def health():
@@ -101,12 +138,14 @@ def create_app(settings=None):
 
     @application.get("/manifest.webmanifest")
     def manifest():
-        return FileResponse(STATIC / "manifest.webmanifest", media_type="application/manifest+json")
+        return FileResponse(
+            static_dir / "manifest.webmanifest", media_type="application/manifest+json"
+        )
 
     @application.get("/sw.js")
     def worker():
-        return FileResponse(
-            STATIC / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"}
+        return Response(
+            release_worker, media_type="text/javascript", headers={"Cache-Control": "no-cache"}
         )
 
     @application.get("/{path:path}")
@@ -125,7 +164,7 @@ def create_app(settings=None):
             "item",
         }:
             raise HTTPException(404, "Страница не найдена")
-        return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+        return HTMLResponse(index_html, headers={"Cache-Control": "no-cache"})
 
     return application
 

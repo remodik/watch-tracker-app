@@ -155,7 +155,11 @@ test("размеры экранов и границы офлайн-кеша", as
     );
     return assets.flat();
   });
-  expect(cached).toContain("/assets/offline.html");
+  expect(
+    cached.some((resource) =>
+      /^\/assets\/[a-f0-9]{24}\/offline\.html$/.test(resource),
+    ),
+  ).toBe(true);
   expect(cached.filter((path) => path.startsWith("/api/"))).toHaveLength(0);
   await context.setOffline(true);
   await page.reload();
@@ -200,4 +204,67 @@ test("некорректная ссылка на запись и поиск в �
   await page.goto("/anime/");
   await page.locator("#global-search input").fill("неизвестное");
   await expect(page).toHaveURL(/\/anime\?q=/);
+});
+
+test("PWA сохраняет согласованность двух версий и отката", async ({
+  page,
+  context,
+  request,
+}) => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await login(page);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await expect
+    .poll(() =>
+      page.evaluate(() => Boolean(navigator.serviceWorker.controller)),
+    )
+    .toBe(true);
+  const next = await context.newPage();
+  next.on("pageerror", (error) => errors.push(error.message));
+  try {
+    await request.post("/_test/release-b");
+    await page.evaluate(async () =>
+      (await navigator.serviceWorker.ready).update(),
+    );
+    await expect(
+      page.getByText("Доступно обновление Watch Tracker"),
+    ).toBeVisible();
+    await next.goto("/");
+    await expect(next.locator("html")).toHaveAttribute(
+      "data-test-release",
+      "b",
+    );
+    await expect(
+      next.getByRole("heading", { name: "Watch Tracker" }),
+    ).toBeVisible();
+    await expect(page.locator("html")).not.toHaveAttribute(
+      "data-test-release",
+      "b",
+    );
+    await page.getByRole("button", { name: "Обновить" }).click();
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-test-release",
+      "b",
+    );
+    await request.post("/_test/release-a");
+    await next.reload();
+    await expect(
+      next.getByRole("heading", { name: "Watch Tracker" }),
+    ).toBeVisible();
+    await expect(next.locator("html")).not.toHaveAttribute(
+      "data-test-release",
+      "b",
+    );
+    await context.setOffline(true);
+    await next.reload();
+    await expect(
+      next.getByRole("heading", { name: "Нет подключения" }),
+    ).toBeVisible();
+    expect(errors).toEqual([]);
+  } finally {
+    await context.setOffline(false);
+    await request.post("/_test/release-a");
+  }
 });

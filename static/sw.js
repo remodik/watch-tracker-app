@@ -1,66 +1,40 @@
-const cacheName = "watch-tracker-static-v2.0.0";
-const offline = "/assets/offline.html";
-const assets = [
-  offline,
-  "/manifest.webmanifest",
-  "/assets/css/app.css",
-  "/assets/css/tokens.css",
-  "/assets/css/layout.css",
-  "/assets/css/components.css",
-  "/assets/css/responsive.css",
-  "/assets/js/app.js",
-  "/assets/js/api.js",
-  "/assets/js/components.js",
-  "/assets/js/router.js",
-  "/assets/js/state.js",
-  "/assets/js/pages/editor.js",
-  "/assets/js/pages/dashboard.js",
-  "/assets/js/pages/library.js",
-  "/assets/js/pages/detail.js",
-  "/assets/js/pages/settings.js",
-  "/assets/js/pages/calendar.js",
-  "/assets/js/pages/statistics.js",
-  "/assets/vendor/chart.umd.min.js",
-  "/assets/vendor/manrope-latin.woff2",
-  "/assets/vendor/manrope-cyrillic.woff2",
-  "/assets/vendor/onest-latin.woff2",
-  "/assets/vendor/onest-cyrillic.woff2",
-  "/assets/icons/lucide.svg",
-  "/assets/icons/banner.webp",
-  "/assets/icons/tmdb.svg",
-  "/assets/icons/icon-192.png",
-  "/assets/icons/icon-512.png",
-  "/assets/icons/maskable-512.png",
-];
-const staticPaths = new Set(assets);
+const cachePrefix = "watch-tracker-release-";
+const cacheName = cachePrefix + "__WATCH_RELEASE__";
+const prefix = "/assets/__WATCH_RELEASE__/";
+const offline = prefix + "offline.html";
+const assets = /* RELEASE_ASSETS */ [];
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(cacheName)
-      .then((cache) =>
-        cache.addAll(
-          assets.map((url) => new Request(url, { cache: "reload" })),
-        ),
-      ),
-  );
-});
+async function install() {
+  const exists = await caches.has(cacheName);
+  const cache = await caches.open(cacheName);
+  try {
+    await cache.addAll(
+      assets.map((url) => new Request(url, { cache: "reload" })),
+    );
+  } catch (error) {
+    if (!exists) await caches.delete(cacheName);
+    throw error;
+  }
+}
+
+self.addEventListener("install", (event) => event.waitUntil(install()));
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter(
-              (key) =>
-                key.startsWith("watch-tracker-static-") && key !== cacheName,
-            )
-            .map((key) => caches.delete(key)),
-        ),
-      )
-      .then(() => self.clients.claim()),
+    (async () => {
+      const names = await caches.keys();
+      const prior = names.filter(
+        (name) => name.startsWith(cachePrefix) && name !== cacheName,
+      );
+      // Keep the previous release available to open tabs and immediate rollbacks.
+      await Promise.all(prior.slice(0, -1).map((name) => caches.delete(name)));
+      await Promise.all(
+        names
+          .filter((name) => name.startsWith("watch-tracker-static-"))
+          .map((name) => caches.delete(name)),
+      );
+      await self.clients.claim();
+    })(),
   );
 });
 
@@ -75,21 +49,25 @@ self.addEventListener("fetch", (event) => {
   if (
     url.origin !== self.location.origin ||
     request.method !== "GET" ||
+    url.pathname === "/api" ||
     url.pathname.startsWith("/api/")
   )
     return;
-  if (request.mode === "navigate") {
+  if (request.mode === "navigate" && !url.pathname.startsWith("/assets/")) {
     event.respondWith(
       fetch(request).catch(() =>
         caches.open(cacheName).then((cache) => cache.match(offline)),
       ),
     );
-  } else if (staticPaths.has(url.pathname) && !url.search) {
+  } else if (/^\/assets\/[a-f0-9]{24}\//.test(url.pathname) && !url.search) {
     event.respondWith(
-      caches
-        .open(cacheName)
-        .then((cache) => cache.match(request))
-        .then((cached) => cached || fetch(request)),
+      (async () => {
+        const version = url.pathname.split("/")[2];
+        const cache = await caches.match(request, {
+          cacheName: cachePrefix + version,
+        });
+        return cache ?? fetch(request);
+      })(),
     );
   }
 });

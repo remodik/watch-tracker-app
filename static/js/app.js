@@ -291,7 +291,9 @@ document.addEventListener("click", (event) => {
 async function serviceWorker() {
   if (!("serviceWorker" in navigator)) return;
   try {
-    const registration = await navigator.serviceWorker.register("/sw.js");
+    const registration = await navigator.serviceWorker.register("/sw.js", {
+      updateViaCache: "none",
+    });
     const banner = $("#update-banner");
     const offer = () => {
       if (navigator.serviceWorker.controller && registration.waiting)
@@ -304,12 +306,12 @@ async function serviceWorker() {
     $("#dismiss-update").addEventListener("click", () => {
       banner.hidden = true;
     });
+    let controlled = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (controlled) location.reload();
+      controlled = true;
+    });
     $("#apply-update").addEventListener("click", () => {
-      navigator.serviceWorker.addEventListener(
-        "controllerchange",
-        () => location.reload(),
-        { once: true },
-      );
       registration.waiting?.postMessage("activate");
     });
   } catch {

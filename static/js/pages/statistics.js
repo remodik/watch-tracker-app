@@ -27,7 +27,10 @@ function loadChart() {
   if (!chartScript) {
     chartScript = new Promise((resolve, reject) => {
       const script = h("script");
-      script.src = "/assets/vendor/chart.umd.min.js";
+      script.src = new URL(
+        "../../vendor/chart.umd.min.js",
+        import.meta.url,
+      ).href;
       script.addEventListener("load", () => resolve(window.Chart), {
         once: true,
       });

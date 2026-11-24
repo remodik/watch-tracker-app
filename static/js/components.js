@@ -30,7 +30,10 @@ export function icon(name) {
   node.setAttribute("aria-hidden", "true");
   node.setAttribute("class", "icon");
   const use = document.createElementNS(svg, "use");
-  use.setAttribute("href", "/assets/icons/lucide.svg#" + name);
+  use.setAttribute(
+    "href",
+    new URL("../icons/lucide.svg#" + name, import.meta.url).href,
+  );
   node.append(use);
   return node;
 }

@@ -229,7 +229,7 @@ export async function settingsPage(context, _path, _params, signal) {
   appendBackups(backups);
   const session = currentSession();
   const tmdb = h("img", "source-logo");
-  tmdb.src = "/assets/icons/tmdb.svg";
+  tmdb.src = new URL("../../icons/tmdb.svg", import.meta.url).href;
   tmdb.alt = "TMDB";
   const tmdbLink = link("", "https://www.themoviedb.org");
   tmdbLink.append(tmdb);
