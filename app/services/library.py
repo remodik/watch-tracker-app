@@ -97,6 +97,10 @@ def duplicate(db, data, excluding=None):
     if external:
         predicates |= Item.identity_key == external
     candidates = db.scalars(select(Item).where(predicates).order_by(Item.added, Item.id))
+    return match_duplicate(candidates, match, external, excluding)
+
+
+def match_duplicate(candidates, match, external, excluding=None):
     for item in candidates:
         if item.id == excluding:
             continue

@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from fastapi import HTTPException
@@ -12,8 +13,8 @@ from app.services.library import (
     archive_event,
     archive_item,
     assign,
-    duplicate,
     identity,
+    match_duplicate,
     now_ms,
     uuid,
 )
@@ -102,11 +103,38 @@ class Plan:
         }
 
 
+def indexed_import_candidates(db, entries):
+    matches, externals, ids = set(), set(), set()
+    for _, item in entries:
+        match, external = identity(item)
+        matches.add(match)
+        if external:
+            externals.add(external)
+        if item.id:
+            ids.add(item.id)
+
+    rows = {}
+    for column, keys in ((Item.match_key, matches), (Item.identity_key, externals), (Item.id, ids)):
+        keys = list(keys)
+        for start in range(0, len(keys), 500):
+            for item in db.scalars(select(Item).where(column.in_(keys[start : start + 500]))):
+                rows[item.id] = item
+
+    by_match = defaultdict(list)
+    by_external = {}
+    for item in sorted(rows.values(), key=lambda entry: (entry.added, entry.id)):
+        by_match[item.match_key].append(item)
+        if item.identity_key:
+            by_external[item.identity_key] = item
+    return by_match, by_external, rows
+
+
 def plan_import(db, payload):
     plan = Plan()
     source_ids, id_mapping, destination_ids = set(), {}, set()
     matches, externals = {}, {}
     replace = payload.mode == "replace"
+    parsed_items = []
     for index, raw in enumerate(payload.items, 1):
         try:
             data = ArchiveItem.model_validate(legacy_entry(raw) if payload.version == 1 else raw)
@@ -115,6 +143,11 @@ def plan_import(db, payload):
                 {"index": index, "record": "item", "issues": validation_messages(exc)}
             )
             continue
+        parsed_items.append((index, data))
+    by_match, by_external, by_id = (
+        indexed_import_candidates(db, parsed_items) if not replace else ({}, {}, {})
+    )
+    for index, data in parsed_items:
         source = data.id
         if source and source in source_ids:
             plan.errors.append(
@@ -140,8 +173,14 @@ def plan_import(db, payload):
             if source:
                 id_mapping[source] = prior
             continue
-        existing = duplicate(db, data) if not replace else None
-        collision = db.get(Item, source) if source and not replace else None
+        candidates = by_match.get(match, [])
+        external_candidate = by_external.get(external)
+        if external_candidate is not None and external_candidate.match_key != match:
+            candidates = sorted(
+                [*candidates, external_candidate], key=lambda entry: (entry.added, entry.id)
+            )
+        existing = match_duplicate(candidates, match, external)
+        collision = by_id.get(source)
         if collision and (existing is None or collision.id != existing.id):
             old_external = collision.metadata_json.get("externalId")
             if existing or (
