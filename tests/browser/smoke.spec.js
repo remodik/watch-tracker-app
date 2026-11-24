@@ -337,3 +337,32 @@ test("импорт объясняет ошибку формата и позво�
   await page.getByRole("button", { name: "Предпросмотр" }).click();
   await expect(page.getByText(/Новые: 1/)).toBeVisible();
 });
+
+test("доступность аниме требует выбора совпадения и учитывает страну", async ({
+  page,
+}) => {
+  await page.route("**/api/catalog/watch/search?*", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    expect(params.get("kind")).toBe("tv");
+    return route.fulfill({
+      json: [{ id: 17, title: "Совпадение в TMDB", year: "2021" }],
+    });
+  });
+  await page.route("**/api/catalog/watch/tv/17?*", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    expect(params.get("region")).toBe("DE");
+    return route.fulfill({ json: { flatrate: ["Площадка из теста"] } });
+  });
+  await page.goto("/");
+  await login(page);
+  await page.locator("#add").click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("Название", { exact: true })
+    .fill("Аниме для проверки");
+  await page.getByRole("button", { name: "Добавить в медиатеку" }).click();
+  await page.getByLabel("Код страны", { exact: false }).fill("de");
+  await page.getByRole("button", { name: "Найти в TMDB" }).click();
+  await page.getByRole("button", { name: /Совпадение в TMDB/ }).click();
+  await expect(page.getByText("Подписка — Площадка из теста")).toBeVisible();
+});

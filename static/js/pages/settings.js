@@ -289,6 +289,12 @@ export async function settingsPage(context, _path, _params, signal) {
     h(
       "div",
       "row",
+      h(
+        "p",
+        "muted",
+        provides.shikimori ? "Шикимори включён" : "Шикимори отключён",
+      ),
+      provides.shikimori && refreshMetadata("shikimori", "Обновить Шикимори"),
       provides.anilist && refreshMetadata("anilist", "Обновить AniList"),
       provides.tmdb && refreshMetadata("tmdb", "Обновить TMDB"),
     ),

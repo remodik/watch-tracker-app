@@ -280,6 +280,152 @@ function eventLabel(event) {
   );
 }
 
+function watchAvailability(item, signal) {
+  const metadata = item.metadata ?? {};
+  const linkedMovie = metadata.provider === "tmdb" && metadata.externalId;
+  const country = input(
+    "watch-region",
+    "text",
+    localStorage.getItem("watch-region") || "RU",
+    {
+      maxLength: 2,
+      required: true,
+      pattern: "[A-Za-z]{2}",
+    },
+  );
+  const title = input(
+    "watch-title",
+    "search",
+    metadata.romajiTitle || metadata.originalTitle || item.title,
+    {
+      required: true,
+      maxLength: 150,
+      minLength: 2,
+    },
+  );
+  const kind = select(
+    "watch-kind",
+    [
+      ["movie", "Фильм"],
+      ["tv", "Сериал"],
+    ],
+    item.type === "film" ? "movie" : "tv",
+  );
+  const form = h("form", "stack");
+  const output = h("div", "stack");
+  output.setAttribute("aria-live", "polite");
+  const submit = h(
+    "button",
+    "button",
+    linkedMovie ? "Проверить площадки" : "Найти в TMDB",
+  );
+  const labels = {
+    flatrate: "Подписка",
+    rent: "Аренда",
+    buy: "Покупка",
+    free: "Бесплатно",
+    ads: "С рекламой",
+  };
+  async function check(media, id, region) {
+    output.replaceChildren(h("p", "muted", "Проверяем доступность…"));
+    try {
+      const offers = await api(
+        "/api/catalog/watch/" +
+          media +
+          "/" +
+          id +
+          "?" +
+          new URLSearchParams({ region }),
+        { signal },
+      );
+      const rows = Object.entries(labels).flatMap(([key, label]) =>
+        offers[key]?.length
+          ? [h("p", "", label + " — " + offers[key].join(", "))]
+          : [],
+      );
+      output.replaceChildren(
+        ...(rows.length
+          ? rows
+          : [h("p", "muted", "Нет данных о доступности в выбранной стране.")]),
+      );
+    } catch (error) {
+      if (!signal?.aborted)
+        output.replaceChildren(h("p", "muted", error.message));
+    }
+  }
+  form.append(
+    field("Код страны (например, RU или DE)", country),
+    ...(!linkedMovie
+      ? [field("Тип в TMDB", kind), field("Название для поиска", title)]
+      : []),
+    submit,
+  );
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const region = country.value.toUpperCase();
+    localStorage.setItem("watch-region", region);
+    submit.disabled = true;
+    try {
+      if (linkedMovie) {
+        await check("movie", metadata.externalId, region);
+        return;
+      }
+      const media = kind.value;
+      const query = title.value;
+      output.replaceChildren(h("p", "muted", "Ищем в TMDB…"));
+      const matches = await api(
+        "/api/catalog/watch/search?" +
+          new URLSearchParams({ kind: media, q: query }),
+        { signal },
+      );
+      output.replaceChildren(
+        ...(matches.length
+          ? [
+              h("p", "muted", "Выбери соответствующее произведение в TMDB."),
+              ...matches.map((match) =>
+                button(
+                  [
+                    match.title,
+                    match.originalTitle !== match.title && match.originalTitle,
+                    match.year,
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
+                  () => check(media, match.id, region),
+                ),
+              ),
+            ]
+          : [
+              h(
+                "p",
+                "muted",
+                "В TMDB ничего не найдено. Попробуй другое название.",
+              ),
+            ]),
+      );
+    } catch (error) {
+      if (!signal?.aborted)
+        output.replaceChildren(h("p", "muted", error.message));
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  return section(
+    "Где смотреть",
+    h(
+      "div",
+      "stack panel",
+      form,
+      output,
+      link(
+        "Данные JustWatch через TMDB",
+        "https://www.justwatch.com/",
+        "text-link",
+      ),
+    ),
+  );
+}
+
 export async function detailPage(context, path, _params, signal) {
   let id;
   try {
@@ -484,6 +630,7 @@ export async function detailPage(context, path, _params, signal) {
         ),
       ),
     ),
+    watchAvailability(item, signal),
     item.type === "anime" &&
       section(
         "Заметки",
