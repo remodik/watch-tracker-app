@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from threading import Lock
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
@@ -328,3 +329,41 @@ def test_cancellation_keeps_seen_episodes_without_counting_rewatch(authorized):
     report = authorized.get("/api/statistics").json()
     assert report["episodes"] == 3
     assert report["annual"]["completed"] == 1
+
+
+@pytest.mark.parametrize(
+    "previous", ["plan", "watching", "watched", "paused", "dropped", "rewatching"]
+)
+@pytest.mark.parametrize(
+    "target", ["plan", "watching", "watched", "paused", "dropped", "rewatching"]
+)
+def test_status_transition_matrix(previous, target):
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from app.services.library import set_status
+
+    pending = previous == "rewatching"
+    item = SimpleNamespace(
+        id="matrix",
+        type="anime",
+        status=previous,
+        seasons_done=0,
+        metadata_json={},
+        tracking={"rewatchInProgress": pending, "hasCompleted": pending or previous == "watched"},
+    )
+    events = []
+    db = SimpleNamespace(add=events.append)
+    if target == "rewatching" and previous not in {"watched", "rewatching"}:
+        with pytest.raises(HTTPException, match="просмотренным"):
+            set_status(db, item, target)
+        assert item.status == previous and events == []
+        return
+    set_status(db, item, target)
+    assert item.status == target
+    assert len(events) == int(previous != target)
+    assert item.tracking.get("rewatches", 0) == int(pending and target == "watched")
+    assert item.tracking.get("rewatchInProgress") == (
+        target == "rewatching" or (pending and target in {"watching", "paused"})
+    )

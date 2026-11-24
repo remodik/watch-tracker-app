@@ -213,7 +213,8 @@ def set_status(db, item, status):
             raise HTTPException(409, "Достигнут предел повторных просмотров")
         state["rewatches"] += 1
     if completion:
-        state["completed"] = today()
+        finished = today()
+        state["completed"] = max(finished, state["started"] or finished)
     item.status, item.tracking = status, state
     touch_item(item)
     record(
