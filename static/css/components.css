@@ -297,7 +297,8 @@ a.metric:hover {
   gap: 4px;
   flex-wrap: wrap;
 }
-.card-actions .button {
+.card-actions > .button,
+.card-actions .context > summary {
   min-height: 35px;
   width: 35px;
   padding: 5px;
@@ -308,7 +309,8 @@ a.metric:hover {
   right: 7px;
   z-index: 1;
 }
-.poster-card > .card-actions .button {
+.poster-card > .card-actions > .button,
+.poster-card > .card-actions .context > summary {
   background: #14131eea;
   border-color: #565068;
   color: #f4f4f8;

@@ -366,3 +366,48 @@ test("доступность аниме требует выбора совпад
   await page.getByRole("button", { name: /Совпадение в TMDB/ }).click();
   await expect(page.getByText("Подписка — Площадка из теста")).toBeVisible();
 });
+
+test("меню действий в мобильном списке полностью помещается на экране", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await login(page);
+  await page.locator("#add").click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("Название", { exact: true })
+    .fill("Карточка с меню");
+  await page.getByRole("button", { name: "Добавить в медиатеку" }).click();
+  await page.goto("/library");
+  await page.getByRole("button", { name: "Список", exact: true }).click();
+
+  for (const width of [320, 390, 1024]) {
+    await page.setViewportSize({ width, height: 844 });
+    const card = page
+      .locator(".list-card")
+      .filter({ hasText: "Карточка с меню" });
+    const trigger = card.getByLabel("Действия с произведением");
+    await trigger.click();
+    const menu = card.locator(".context-menu");
+    await expect(menu).toBeVisible();
+    const [panel, edit, details] = await Promise.all([
+      menu.boundingBox(),
+      menu.getByRole("button", { name: "Изменить" }).boundingBox(),
+      menu.getByRole("link", { name: "Подробнее" }).boundingBox(),
+    ]);
+    expect(panel.x).toBeGreaterThanOrEqual(0);
+    expect(panel.x + panel.width).toBeLessThanOrEqual(width);
+    for (const action of [edit, details]) {
+      expect(action.width).toBeGreaterThanOrEqual(100);
+      expect(action.x + action.width).toBeLessThanOrEqual(
+        panel.x + panel.width,
+      );
+    }
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+  }
+});
